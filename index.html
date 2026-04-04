@@ -2,159 +2,292 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Gemma 4 — Transformers.js v4</title>
-  <style>
-    body { font-family: monospace; max-width: 800px; margin: 40px auto; padding: 0 20px; background: #f5f5f5; }
-    h1 { font-size: 1.2em; }
-    #status { color: #555; margin: 8px 0; min-height: 1.4em; }
-    #progress { width: 100%; height: 6px; background: #ddd; border-radius: 3px; margin: 6px 0; display: none; }
-    #progress-bar { height: 100%; background: #4a90d9; border-radius: 3px; width: 0%; transition: width 0.2s; }
-    #chat { background: white; border: 1px solid #ccc; border-radius: 4px; padding: 12px; min-height: 200px; max-height: 500px; overflow-y: auto; margin: 12px 0; white-space: pre-wrap; font-size: 0.9em; line-height: 1.5; }
-    #input-row { display: flex; gap: 8px; }
-    #user-input { flex: 1; padding: 8px; font-family: monospace; font-size: 0.95em; border: 1px solid #ccc; border-radius: 4px; }
-    button { padding: 8px 16px; font-family: monospace; cursor: pointer; border: 1px solid #888; border-radius: 4px; background: white; }
-    button:disabled { opacity: 0.5; cursor: default; }
-    #send-btn { background: #4a90d9; color: white; border-color: #4a90d9; }
-    #stop-btn { background: #d94a4a; color: white; border-color: #d94a4a; display: none; }
-    details { margin: 12px 0; font-size: 0.85em; color: #555; }
-    details summary { cursor: pointer; }
-    label { display: block; margin: 4px 0; }
-    input[type=number] { width: 80px; padding: 3px; font-family: monospace; }
-    select { padding: 3px; font-family: monospace; }
-    #tokens { font-size: 0.8em; color: #888; margin: 4px 0; }
-    .user { color: #1a5276; }
-    .assistant { color: #1a4a1a; }
-    .system { color: #888; font-style: italic; }
-    #model-input { width: 100%; padding: 4px; font-family: monospace; font-size: 0.85em; margin: 4px 0; box-sizing: border-box; }
-  </style>
+  <title>Gemma 4 — Transformers.js v4 (Teaching Demo)</title>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@4.0.0-alpha.1/es5/tex-mml-chtml.js"></script>
 </head>
-<body>
+<body style="font-family: sans-serif; padding: 20px;">
 
-<h1>Gemma 4 · Transformers.js v4.0.1</h1>
+<h1>Gemma 4 · Transformers.js v4.0.1 — Teaching Demo</h1>
 
-<div id="status">Loading library…</div>
-<div id="progress"><div id="progress-bar"></div></div>
+<p>
+  This page runs a large language model <strong>entirely in your browser</strong>. 
+  Uses <a href="https://huggingface.co/onnx-community/gemma-4-E2B-it-ONNX" target="_blank">Gemma 4 E2B-IT (ONNX)</a>
+  via <a href="https://huggingface.co/docs/transformers.js" target="_blank">Transformers.js v4</a>.
+</p>
 
-<details>
-  <summary>⚙ Settings</summary>
-  <label>Model ID: <input id="model-input" value="onnx-community/gemma-4-E2B-it-ONNX"></label>
-  <label>Max new tokens: <input type="number" id="max-tokens" value="512" min="64" max="2048"></label>
-  <label>Temperature: <input type="number" id="temperature" value="1.0" min="0.1" max="2.0" step="0.1"></label>
+<hr>
+
+<div id="load-panel">
+  <p>
+    <strong>Step 1 — Choose settings, then click Download &amp; Load Model.</strong><br>
+    First download is ~900 MB (q4). After that it is cached and reloads in seconds.
+  </p>
+
+  <label>Model ID:<br>
+    <input id="model-input" type="text" value="onnx-community/gemma-4-E2B-it-ONNX"
+      style="width:420px;font-family:monospace;padding:4px">
+  </label><br><br>
+
   <label>Device:
     <select id="device">
-      <option value="webgpu" selected>webgpu</option>
-      <option value="wasm">wasm (CPU)</option>
+      <option value="webgpu" selected>webgpu — GPU via WebGPU (Chrome/Edge, fast)</option>
+      <option value="wasm">wasm — CPU via WebAssembly (any browser, slow)</option>
     </select>
-  </label>
-  <label>Dtype:
+  </label><br><br>
+
+  <label>Quantization (dtype):
     <select id="dtype">
-      <option value="q4" selected>q4</option>
-      <option value="q4f16">q4f16</option>
-      <option value="fp16">fp16</option>
-      <option value="fp32">fp32</option>
+      <option value="q4" selected>q4 — ~900 MB · fastest (recommended)</option>
+      <option value="q4f16">q4f16 — ~900 MB · needs fp16 GPU</option>
+      <option value="fp16">fp16 — ~2 GB · needs large VRAM</option>
+      <option value="fp32">fp32 — ~4 GB · full precision</option>
     </select>
-  </label>
-  <button onclick="window.myReload()">Reload model</button>
-  <button onclick="window.myClear()">Clear chat</button>
-</details>
+  </label><br><br>
 
-<div id="chat"><span class="system">Model not yet loaded. Waiting for first message…</span></div>
-<div id="tokens"></div>
+<button id="load-btn" onclick="window.myLoad()">🚀 Load Model (Uses Cache)</button>
+</div>
 
-<div id="input-row">
-  <input id="user-input" type="text" placeholder="Type a message and press Enter or Send" disabled>
-  <button id="send-btn" onclick="window.mySend()" disabled>Send</button>
-  <button id="stop-btn" onclick="window.myStop()">Stop</button>
+<div id="status" style="color:#555;margin:8px 0;min-height:1.4em"></div>
+<div id="progress-wrap" style="display:none;max-width:600px">
+  <div style="height:8px;background:#ddd;border-radius:3px">
+    <div id="progress-bar" style="height:8px;background:#4a90d9;border-radius:3px;width:0%;transition:width 0.2s"></div>
+  </div>
+</div>
+
+<div id="chat-panel" style="display:none">
+
+  <hr>
+
+  <details>
+    <summary>⚙ Generation Settings</summary>
+    <br>
+    <label><strong>Max output tokens</strong>:<br>
+      <input type="number" id="max-tokens" value="512" min="64" max="8192">
+    </label><br><br>
+
+    <label><strong>Temperature</strong>:<br>
+      <input type="number" id="temperature" value="1.0" min="0.1" max="2.0" step="0.1">
+    </label><br><br>
+    
+    <button onclick="window.myReload()">Change settings / Reload model</button>
+  </details>
+
+  <details>
+    <summary>📖 What is a token?</summary>
+    <p>A token is ~¾ of a word. Gemma 4 E2B context: 128,000 tokens.</p>
+  </details>
+
+  <details>
+    <summary>🌐 HTML Viewer</summary>
+    <p>Render Gemma's HTML code here.</p>
+    <button onclick="window.myViewHtml()">View HTML</button>
+    <button onclick="window.myRenderHtml()">Render in New Tab</button>
+    <button onclick="window.myCopyHtml()">Copy HTML</button>
+    <br><br>
+    <textarea id="html-preview" rows="8" style="width:100%"
+      placeholder="HTML output will appear here..."></textarea>
+  </details>
+
+  <details open>
+    <summary>∑ LATEX Viewer</summary>
+    <p>Mathematical formulas will be rendered below.</p>
+    <button onclick="window.myRenderMath()">Render Manually</button>
+    <br><br>
+    <div id="myMathOutput" style="font-size: 1.2em; border: 1px solid #ccc; padding: 15px; background: #f9f9f9; min-height: 50px;">
+      Rendered math will appear here...
+    </div>
+  </details>
+
+  <br>
+
+  <div id="chat" style="background:white;border:1px solid #ccc;border-radius:4px;padding:12px;
+    min-height:200px;max-height:500px;overflow-y:auto;font-family:monospace;
+    font-size:0.9em;line-height:1.5;white-space:pre-wrap"></div>
+
+  <div id="stats" style="font-size:0.8em;color:#888;margin:4px 0;min-height:1.2em"></div>
+
+  <div style="display:flex;gap:8px;margin-top:4px">
+    <input id="user-input" type="text"
+      placeholder="Type a message and press Enter"
+      disabled
+      style="flex:1;padding:8px;font-family:monospace;font-size:0.95em;border:1px solid #ccc;border-radius:4px">
+    <button id="send-btn" onclick="window.mySend()" disabled
+      style="padding:8px 16px;background:#4a90d9;color:white;border:none;border-radius:4px;cursor:pointer">Send</button>
+    <button id="stop-btn" onclick="window.myStop()"
+      style="display:none;padding:8px 16px;background:#d94a4a;color:white;border:none;border-radius:4px;cursor:pointer">Stop</button>
+    <button onclick="window.myClear()" style="padding:8px 16px;cursor:pointer">Clear Chat History</button>
+  </div>
+
 </div>
 
 <script type="module">
-// ── Config ──────────────────────────────────────────────────────────────────
+
 const CDN = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.0.1';
 
-// ── State ────────────────────────────────────────────────────────────────────
-let pipe = null;
-let history = [];       // [{role, content}]
+// ── State ────────────────────────────────────────────────────────────────
+let pipe       = null;
+let history    = [];
 let generating = false;
-let stopRequested = false;
-let t0 = 0;
-let tokCount = 0;
+let myStoppingCriteria = null; 
+let t0         = 0;
+let tokCount   = 0;
+let timerTick  = null;
+let mathTimer  = null;
 
-// ── DOM refs ─────────────────────────────────────────────────────────────────
-const statusEl   = document.getElementById('status');
-const progressEl = document.getElementById('progress');
-const barEl      = document.getElementById('progress-bar');
-const chatEl     = document.getElementById('chat');
-const inputEl    = document.getElementById('user-input');
-const sendBtn    = document.getElementById('send-btn');
-const stopBtn    = document.getElementById('stop-btn');
-const tokensEl   = document.getElementById('tokens');
+// ── DOM refs ─────────────────────────────────────────────────────────────
+const statusEl      = document.getElementById('status');
+const progressEl    = document.getElementById('progress-wrap');
+const barEl         = document.getElementById('progress-bar');
+const chatEl        = document.getElementById('chat');
+const inputEl       = document.getElementById('user-input');
+const sendBtn       = document.getElementById('send-btn');
+const stopBtn       = document.getElementById('stop-btn');
+const statsEl       = document.getElementById('stats');
+const loadBtn       = document.getElementById('load-btn');
+const chatPanel     = document.getElementById('chat-panel');
+const loadPanel     = document.getElementById('load-panel');
+const htmlPreviewEl = document.getElementById('html-preview');
+const mathOutputEl  = document.getElementById('myMathOutput');
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
 function setStatus(msg) { statusEl.textContent = msg; }
+
+function startLiveClock() {
+  t0 = performance.now();
+  tokCount = 0;
+  clearInterval(timerTick);
+  timerTick = setInterval(() => {
+    if (!generating) { clearInterval(timerTick); return; }
+    const sec = ((performance.now() - t0) / 1000).toFixed(1);
+    const tps = tokCount > 0 ? (tokCount / ((performance.now() - t0) / 1000)).toFixed(1) : '—';
+    statsEl.textContent = `⏱ ${sec}s elapsed · ${tokCount} tokens out · ${tps} tok/s — generating…`;
+  }, 200);
+  
+  // Auto-render math every 3 seconds during generation
+  clearInterval(mathTimer);
+  mathTimer = setInterval(window.myRenderMath, 3000);
+}
+
+function stopLiveClock() {
+  clearInterval(timerTick);
+  clearInterval(mathTimer);
+  const sec = ((performance.now() - t0) / 1000).toFixed(1);
+  const tps = tokCount > 0 ? (tokCount / ((performance.now() - t0) / 1000)).toFixed(1) : '—';
+  statsEl.textContent = `Done — ${sec}s · ${tokCount} tokens out · ${tps} tok/s`;
+  window.myRenderMath(); // Final render
+}
 
 function appendChat(role, text) {
   const div = document.createElement('div');
   div.className = role;
-  div.textContent = (role === 'user' ? '▶ You: ' : role === 'assistant' ? '◀ Gemma: ' : '') + text;
+  div.textContent = (role === 'user' ? '▶ You: ' : '◀ Gemma: ') + text;
   chatEl.appendChild(div);
   chatEl.scrollTop = chatEl.scrollHeight;
   return div;
 }
 
-function clearChat() {
+window.myClear = () => {
   chatEl.innerHTML = '';
   history = [];
-  tokensEl.textContent = '';
+  statsEl.textContent = '';
+  htmlPreviewEl.value = '';
+  mathOutputEl.innerHTML = 'Rendered math will appear here...';
+};
+
+// ── HTML/Math Viewers ───────────────────────────────────────────────────
+function extractHtml(str) {
+  const m = str.match(/<!DOCTYPE html>[\s\S]*?<\/html>/si);
+  return m ? m[0] : str;
 }
 
-// ── Load model ────────────────────────────────────────────────────────────────
-async function loadModel() {
-  const { pipeline, env } = await import(CDN);
+function lastAssistantText() {
+  const divs = chatEl.querySelectorAll('.assistant');
+  if (!divs.length) return '';
+  return divs[divs.length - 1].textContent.replace(/^◀ Gemma: /, '');
+}
 
-  // Show raw CDN version for debugging
-  setStatus(`Transformers.js loaded. Initialising model…`);
+window.myViewHtml = () => {
+  const raw = lastAssistantText();
+  if (!raw) return;
+  htmlPreviewEl.value = extractHtml(raw);
+};
 
-  const modelId = document.getElementById('model-input').value.trim();
-  const device   = document.getElementById('device').value;
-  const dtype    = document.getElementById('dtype').value;
+window.myRenderHtml = () => {
+  const html = htmlPreviewEl.value.trim();
+  if (!html) return;
+  const w = window.open('', 'gemma-render');
+  w.document.write(html);
+  w.document.close();
+};
 
-  setStatus(`Loading ${modelId} (device=${device}, dtype=${dtype}) — first run downloads ~1–2 GB…`);
+window.myCopyHtml = () => {
+  const html = htmlPreviewEl.value.trim();
+  if (!html) return;
+  navigator.clipboard.writeText(html).then(() => alert('Copied.'));
+};
+
+window.myRenderMath = async () => {
+  let text = lastAssistantText();
+  if (!text) return;
+  // Basic markdown-like formatting for the preview
+  text = text.replace(/^###\s*(.*)$/gm, "<h2>$1</h2>")
+             .replace(/\n/g, ' <br> ')
+             .replace(/\*\*(.*?)\*\*/g, "<b>$1</b>");
+  mathOutputEl.innerHTML = text;
+  if (window.MathJax) {
+    await MathJax.typesetPromise([mathOutputEl]);
+  }
+};
+
+// ── Model Ops ────────────────────────────────────────────────────────────
+
+async function myLoadModel() {
+  const { pipeline, TextStreamer, InterruptableStoppingCriteria } = await import(CDN);
+  window.__TextStreamer = TextStreamer;
+  window.__ISC = InterruptableStoppingCriteria;
+  
+  const myModelId = document.getElementById('model-input').value.trim();
+  const myDevice = document.getElementById('device').value;
+  const myDtype = document.getElementById('dtype').value;
+  
+  loadBtn.disabled = true;
+  setStatus('Initializing… Checking browser cache.');
   progressEl.style.display = 'block';
   barEl.style.width = '0%';
-
+  
   try {
-    pipe = await pipeline('text-generation', modelId, {
-      device,
-      dtype,
+    pipe = await pipeline('text-generation', myModelId, {
+      device: myDevice,
+      dtype: myDtype,
       progress_callback(p) {
-        if (p.status === 'progress') {
-          const pct = p.progress ?? 0;
-          barEl.style.width = pct.toFixed(1) + '%';
-          setStatus(`Downloading ${p.file ?? ''} — ${pct.toFixed(1)}%`);
+        if (p.status === 'initiate') {
+          setStatus('Checking cache for: ' + p.file);
+        } else if (p.status === 'download') {
+          setStatus('Downloading new model files to cache…');
+        } else if (p.status === 'progress') {
+          const myPct = p.progress ?? 0;
+          barEl.style.width = myPct.toFixed(1) + '%';
+          setStatus('Downloading: ' + p.file + ' — ' + myPct.toFixed(1) + '%');
         } else if (p.status === 'done') {
-          setStatus(`Loaded: ${p.file ?? ''}`);
+          setStatus('Verified: ' + p.file);
         } else if (p.status === 'ready') {
-          setStatus('Model ready ✓');
+          setStatus('Model Ready - Loading from cache ✓');
         }
       }
     });
   } catch (err) {
-    setStatus('Error loading model: ' + err.message);
-    console.error(err);
+    setStatus('Error: ' + err.message);
+    loadBtn.disabled = false;
     return;
   }
-
   progressEl.style.display = 'none';
-  barEl.style.width = '0%';
-  setStatus('Model ready ✓  (cached after first download)');
-  chatEl.innerHTML = '';
+  loadPanel.style.display = 'none';
+  chatPanel.style.display = 'block';
   inputEl.disabled = false;
   sendBtn.disabled = false;
   inputEl.focus();
 }
 
-// ── Send message ──────────────────────────────────────────────────────────────
-async function send() {
+async function mySend() {
   if (!pipe || generating) return;
   const myText = inputEl.value.trim();
   if (!myText) return;
@@ -164,84 +297,82 @@ async function send() {
   sendBtn.disabled = true;
   stopBtn.style.display = 'inline-block';
   generating = true;
-  stopRequested = false;
-  tokCount = 0;
-  t0 = performance.now();
 
-  history.push({ role: 'user', content: myText });
+  myStoppingCriteria = new window.__ISC();
+
   appendChat('user', myText);
+  history.push({ role: 'user', content: myText });
+  
   const myAssistantDiv = appendChat('assistant', '…');
+  let myPartial = '';
+  startLiveClock();
 
   const myMaxTokens = parseInt(document.getElementById('max-tokens').value) || 512;
   const myTemperature = parseFloat(document.getElementById('temperature').value) || 1.0;
+  
+  const myStreamer = new window.__TextStreamer(pipe.tokenizer, {
+    skip_prompt: true,
+    skip_special_tokens: true,
+    callback_function(token) {
+      myPartial += token;
+      tokCount++;
+      myAssistantDiv.textContent = '◀ Gemma: ' + myPartial;
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+  });
 
   try {
-    // In Transformers.js v4, passing the history array directly allows the library 
-    // to use the model's internal chat template automatically.
-    const myResult = await pipe(history, {
+    await pipe(history, {
       max_new_tokens: myMaxTokens,
       temperature: myTemperature,
       do_sample: myTemperature !== 1.0,
-      callback_function: (beams) => {
-        if (stopRequested) return true;
-        tokCount++;
-        
-        const myElapsed = (performance.now() - t0) / 1000;
-        tokensEl.textContent = `${tokCount} tokens · ${(tokCount / myElapsed).toFixed(1)} tok/s`;
-        return false;
-      }
+      streamer: myStreamer,
+      stopping_criteria: myStoppingCriteria
     });
-
-    // Extract the content from the last message in the returned conversation array
-    const myFinalContent = myResult[0].generated_text.at(-1).content;
-
-    myAssistantDiv.textContent = '◀ Gemma: ' + myFinalContent;
-    history.push({ role: 'assistant', content: myFinalContent });
-
+    history.push({ role: 'assistant', content: myPartial });
   } catch (err) {
-    myAssistantDiv.textContent = '◀ Gemma: [Error] ' + err.message;
-    console.error(err);
+    if (myStoppingCriteria.interrupted) {
+      myAssistantDiv.textContent += ' [Stopped by user]';
+    } else {
+      myAssistantDiv.textContent = '◀ Gemma: [Error] ' + err.message;
+    }
+  } finally {
+    stopLiveClock();
+    generating = false;
+    stopBtn.style.display = 'none';
+    inputEl.disabled = false;
+    sendBtn.disabled = false;
+    inputEl.focus();
   }
-
-  const myTotalElapsed = (performance.now() - t0) / 1000;
-  tokensEl.textContent = `${tokCount} tokens · ${(tokCount / myTotalElapsed).toFixed(1)} tok/s · ${myTotalElapsed.toFixed(1)}s`;
-
-  generating = false;
-  stopRequested = false;
-  stopBtn.style.display = 'none';
-  inputEl.disabled = false;
-  sendBtn.disabled = false;
-  inputEl.focus();}
-
-// ── Stop ──────────────────────────────────────────────────────────────────────
-function stop() {
-  stopRequested = true;
-  setStatus('Stopping…');
 }
 
-// ── Reload ────────────────────────────────────────────────────────────────────
-async function reload() {
+window.myStop = () => {
+  if (myStoppingCriteria) {
+    myStoppingCriteria.interrupt();
+    setStatus('Stop signal sent to model.');
+  }
+};
+
+window.myReload = () => {
   pipe = null;
-  clearChat();
-  inputEl.disabled = true;
-  sendBtn.disabled = true;
-  await loadModel();
-}
+  window.myClear();
+  chatPanel.style.display = 'none';
+  loadPanel.style.display = 'block';
+  loadBtn.disabled = false;
+  setStatus('');
+};
 
-// ── Keyboard shortcut ─────────────────────────────────────────────────────────
 inputEl.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  if (e.key === 'Enter' && !e.shiftKey) { 
+    e.preventDefault(); 
+    mySend();
+  }
 });
 
-// ── Expose to onclick handlers ────────────────────────────────────────────────
-window.mySend   = send;
-window.myStop   = stop;
-window.myReload = reload;
-window.myClear  = clearChat;
+window.mySend = mySend;
+window.myLoad = myLoadModel;
+window.myReload = myReload;
 
-// ── Auto-load on page open ────────────────────────────────────────────────────
-loadModel();
 </script>
-
 </body>
 </html>
