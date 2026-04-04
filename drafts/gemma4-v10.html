@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Gemma 4 — Transformers.js v4 (Teaching Demo)</title>
+</head>
+<body>
+
+<h1>Gemma 4 · Transformers.js v4.0.1 — Teaching Demo</h1>
+
+<p>
+  This page runs a large language model <strong>entirely in your browser</strong> — no server, no internet needed after
+  the first download. The model is stored in your browser cache and loads instantly on future visits, even offline.
+  Uses <a href="https://huggingface.co/onnx-community/gemma-4-E2B-it-ONNX" target="_blank">Gemma 4 E2B-IT (ONNX)</a>
+  via <a href="https://huggingface.co/docs/transformers.js" target="_blank">Transformers.js v4</a>.
+</p>
+
+<hr>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     PANEL 1 — LOAD MODEL
+══════════════════════════════════════════════════════════════════════ -->
+<div id="load-panel">
+  <p>
+    <strong>Step 1 — Choose settings, then click Download &amp; Load Model.</strong><br>
+    First download is ~900 MB (q4). After that it is cached and reloads in seconds, even without internet.
+  </p>
+
+  <label>Model ID:<br>
+    <input id="model-input" type="text" value="onnx-community/gemma-4-E2B-it-ONNX"
+      style="width:420px;font-family:monospace;padding:4px">
+  </label><br><br>
+
+  <label>Device:
+    <select id="device">
+      <option value="webgpu" selected>webgpu — GPU via WebGPU (Chrome/Edge, fast)</option>
+      <option value="wasm">wasm — CPU via WebAssembly (any browser, slow)</option>
+    </select>
+  </label><br><br>
+
+  <label>Quantization (dtype):
+    <select id="dtype">
+      <option value="q4" selected>q4 — ~900 MB · fastest · good quality (recommended)</option>
+      <option value="q4f16">q4f16 — ~900 MB · slightly better · needs fp16 GPU</option>
+      <option value="fp16">fp16 — ~2 GB · high quality · needs large VRAM</option>
+      <option value="fp32">fp32 — ~4 GB · full precision · very slow in browser</option>
+    </select>
+  </label><br><br>
+
+  <button id="load-btn" onclick="window.myLoad()">⬇ Download &amp; Load Model</button>
+</div>
+
+<!-- Progress -->
+<div id="status" style="color:#555;margin:8px 0;min-height:1.4em"></div>
+<div id="progress-wrap" style="display:none;max-width:600px">
+  <div style="height:8px;background:#ddd;border-radius:3px">
+    <div id="progress-bar" style="height:8px;background:#4a90d9;border-radius:3px;width:0%;transition:width 0.2s"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     PANEL 2 — CHAT (hidden until model loads)
+══════════════════════════════════════════════════════════════════════ -->
+<div id="chat-panel" style="display:none">
+
+  <hr>
+
+  <!-- Generation settings -->
+  <details>
+    <summary>⚙ Generation Settings</summary>
+    <br>
+    <label><strong>Max output tokens</strong> — how many new tokens Gemma may generate per reply:<br>
+      <input type="number" id="max-tokens" value="512" min="64" max="8192">
+      <small> — Gemma 4 E2B context window: 128,000 tokens total (input + output combined).
+        A token is roughly ¾ of a word. Typical chat reply: 100–600 tokens.
+        "Max output tokens" only caps the reply length; it does not count your input.</small>
+    </label><br><br>
+
+    <label><strong>Temperature</strong> — randomness of output:<br>
+      <input type="number" id="temperature" value="1.0" min="0.1" max="2.0" step="0.1">
+      <small> — 0.1 = very focused/deterministic. 1.0 = default balanced. 2.0 = very creative/unpredictable.</small>
+    </label><br><br>
+
+    <button onclick="window.myClear()">Clear chat history</button>
+    <button onclick="window.myReload()">Change settings / Reload model</button>
+  </details>
+
+  <!-- Token explainer -->
+  <details>
+    <summary>📖 What is a token? What is a context window?</summary>
+    <p>
+      A <strong>token</strong> is roughly 3–4 characters or about ¾ of an English word.<br>
+      "Hello world" ≈ 2–3 tokens. A paragraph ≈ 100–150 tokens.<br><br>
+      <strong>Input tokens</strong> = your message + all previous conversation history sent to the model each time.<br>
+      <strong>Output tokens</strong> = the new words Gemma generates in reply. "Max output tokens" caps this.<br><br>
+      <strong>Context window</strong> = total tokens (input + output) the model can hold at once.
+      Gemma 4 E2B = 128,000 tokens. As your conversation grows, old messages eventually fall off.<br><br>
+      <strong>tok/s</strong> = tokens per second. WebGPU + q4 → expect 10–40 tok/s depending on GPU.
+      WASM/CPU → expect 1–5 tok/s.
+    </p>
+  </details>
+
+  <!-- Camera -->
+  <details>
+    <summary>📷 Camera — capture an image to send with your message</summary>
+    <p>
+      Gemma 4 E2B is <strong>multimodal</strong> — it can look at images alongside your text.<br><br>
+      How it works: the browser draws a video frame onto a hidden Canvas element, converts it to a base64 JPEG
+      data URI, and includes it as an image content block alongside your text prompt.
+      No image is sent to any server — everything stays in your browser.<br><br>
+      Note: image support in Transformers.js v4 with the ONNX pipeline may require the model's vision
+      encoder to be enabled. If you see an error, the text-only path always works.
+    </p>
+    <video id="cam-video" width="320" height="240" autoplay style="display:none;border:1px solid #ccc"></video>
+    <canvas id="cam-canvas" width="320" height="240" style="display:none"></canvas><br>
+    <img id="cam-preview" style="display:none;max-width:320px;border:1px solid #ccc" alt="captured frame"><br>
+    <button id="cam-start-btn" onclick="window.myStartCam()">▶ Start Camera</button>
+    <button id="cam-capture-btn" onclick="window.myCapture()" style="display:none">📷 Capture Frame</button>
+    <button id="cam-clear-btn" onclick="window.myClearImage()" style="display:none">✕ Clear Image</button>
+    <span id="cam-status" style="color:#555;margin-left:8px"></span>
+  </details>
+
+  <!-- Microphone -->
+  <details>
+    <summary>🎤 Microphone — speak your message (Chrome on-device speech recognition)</summary>
+    <p>
+      Uses the browser's built-in <strong>Web Speech API</strong> (webkitSpeechRecognition) to transcribe
+      your voice to text, then places the transcript in the input box.<br><br>
+      In Chrome 139+, recognition uses <strong>SODA (Speech On-Device API)</strong> — a local model,
+      no audio leaves your machine. Older Chrome sends audio to Google's servers.
+      Firefox and Safari do not support this API.<br><br>
+      This is separate from Whisper. A fully offline Whisper pipeline via Transformers.js
+      (~150 MB) is a planned future addition to this demo. Both approaches produce text that Gemma then responds to —
+      Gemma itself does not process raw audio in the ONNX version.
+    </p>
+    <button id="mic-btn" onclick="window.myToggleMic()">🎤 Start Microphone</button>
+    <span id="mic-status" style="color:#555;margin-left:8px"></span>
+    <div id="mic-transcript" style="min-height:1.2em;color:#444;margin-top:4px;font-style:italic"></div>
+  </details>
+
+  <!-- HTML Viewer — modelled on your Chrome Built-in AI teaching page -->
+  <details>
+    <summary>🌐 HTML Viewer — when Gemma writes a webpage, render it here</summary>
+    <p>
+      Ask Gemma to write a single-file HTML page, then use these buttons to extract and preview it.<br><br>
+      "View HTML" uses the same regex as your Chrome Built-in AI page:
+      <code>/&lt;!DOCTYPE html&gt;[\s\S]*?&lt;\/html&gt;/si</code>
+      to strip Gemma's commentary and keep only the HTML document.<br>
+      Edit in the box below, then click "Render in New Tab" to see it live.
+    </p>
+    <button onclick="window.myViewHtml()">View HTML</button>
+    <button onclick="window.myRenderHtml()">Render in New Tab</button>
+    <button onclick="window.myCopyHtml()">Copy HTML</button>
+    <br><br>
+    <textarea id="html-preview" rows="8" cols="100"
+      placeholder="After Gemma replies with a webpage, click 'View HTML' to extract the code here. Edit freely, then render."></textarea>
+  </details>
+
+  <br>
+
+  <!-- Chat window -->
+  <div id="chat" style="background:white;border:1px solid #ccc;border-radius:4px;padding:12px;
+    min-height:200px;max-height:500px;overflow-y:auto;font-family:monospace;
+    font-size:0.9em;line-height:1.5;white-space:pre-wrap"></div>
+
+  <!-- Live stats bar -->
+  <div id="stats" style="font-size:0.8em;color:#888;margin:4px 0;min-height:1.2em"></div>
+
+  <!-- Image badge -->
+  <div id="image-badge" style="display:none;color:#4a90d9;font-size:0.85em;margin-bottom:2px">
+    📎 Image attached — will be sent with your next message
+  </div>
+
+  <!-- Input row -->
+  <div style="display:flex;gap:8px;margin-top:4px">
+    <input id="user-input" type="text"
+      placeholder="Type a message (or use mic / camera above) and press Enter or Send"
+      disabled
+      style="flex:1;padding:8px;font-family:monospace;font-size:0.95em;border:1px solid #ccc;border-radius:4px">
+    <button id="send-btn" onclick="window.mySend()" disabled
+      style="padding:8px 16px;background:#4a90d9;color:white;border:none;border-radius:4px;cursor:pointer">Send</button>
+    <button id="stop-btn" onclick="window.myStop()"
+      style="display:none;padding:8px 16px;background:#d94a4a;color:white;border:none;border-radius:4px;cursor:pointer">Stop</button>
+  </div>
+
+</div><!-- end #chat-panel -->
+
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════════════════════════════════ -->
+<script type="module">
+
+const CDN = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.0.1';
+
+// ── State ────────────────────────────────────────────────────────────────
+let pipe       = null;
+let history    = [];
+let generating = false;
+let stopFlag   = false;
+let t0         = 0;
+let tokCount   = 0;
+let timerTick  = null;
+let capturedImageDataUrl = null;
+
+// ── DOM refs ─────────────────────────────────────────────────────────────
+const statusEl      = document.getElementById('status');
+const progressEl    = document.getElementById('progress-wrap');
+const barEl         = document.getElementById('progress-bar');
+const chatEl        = document.getElementById('chat');
+const inputEl       = document.getElementById('user-input');
+const sendBtn       = document.getElementById('send-btn');
+const stopBtn       = document.getElementById('stop-btn');
+const statsEl       = document.getElementById('stats');
+const loadBtn       = document.getElementById('load-btn');
+const chatPanel     = document.getElementById('chat-panel');
+const loadPanel     = document.getElementById('load-panel');
+const htmlPreviewEl = document.getElementById('html-preview');
+const imageBadge    = document.getElementById('image-badge');
+const camVideo      = document.getElementById('cam-video');
+const camCanvas     = document.getElementById('cam-canvas');
+const camPreview    = document.getElementById('cam-preview');
+const camStatus     = document.getElementById('cam-status');
+const camCaptureBtn = document.getElementById('cam-capture-btn');
+const camClearBtn   = document.getElementById('cam-clear-btn');
+const micBtn        = document.getElementById('mic-btn');
+const micStatus     = document.getElementById('mic-status');
+const micTranscript = document.getElementById('mic-transcript');
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function setStatus(msg) { statusEl.textContent = msg; }
+
+function startLiveClock() {
+  t0 = performance.now();
+  tokCount = 0;
+  clearInterval(timerTick);
+  timerTick = setInterval(() => {
+    if (!generating) { clearInterval(timerTick); return; }
+    const sec = ((performance.now() - t0) / 1000).toFixed(1);
+    const tps = tokCount > 0
+      ? (tokCount / ((performance.now() - t0) / 1000)).toFixed(1)
+      : '—';
+    statsEl.textContent = `⏱ ${sec}s elapsed · ${tokCount} tokens out · ${tps} tok/s — generating…`;
+  }, 200);
+}
+
+function stopLiveClock() {
+  clearInterval(timerTick);
+  const sec = ((performance.now() - t0) / 1000).toFixed(1);
+  const tps = tokCount > 0
+    ? (tokCount / ((performance.now() - t0) / 1000)).toFixed(1)
+    : '—';
+  statsEl.textContent = `Done — ${sec}s · ${tokCount} tokens out · ${tps} tok/s`;
+}
+
+function appendChat(role, text) {
+  const div = document.createElement('div');
+  div.className = role;
+  div.textContent = (role === 'user' ? '▶ You: ' : '◀ Gemma: ') + text;
+  chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return div;
+}
+
+function clearChat() {
+  chatEl.innerHTML = '';
+  history = [];
+  statsEl.textContent = '';
+  htmlPreviewEl.value = '';
+}
+
+// ── HTML Viewer (same pattern as your Chrome Built-in AI page) ────────────
+function extractHtml(str) {
+  // Strip Gemma's surrounding commentary; keep only the HTML document.
+  const m = str.match(/<!DOCTYPE html>[\s\S]*?<\/html>/si);
+  return m ? m[0] : str;
+}
+
+function lastAssistantText() {
+  const divs = chatEl.querySelectorAll('.assistant');
+  if (!divs.length) return '';
+  return divs[divs.length - 1].textContent.replace(/^◀ Gemma: /, '');
+}
+
+window.myViewHtml = () => {
+  const raw = lastAssistantText();
+  if (!raw) { alert('No Gemma response yet. Send a message first.'); return; }
+  htmlPreviewEl.value = extractHtml(raw);
+};
+
+window.myRenderHtml = () => {
+  const html = htmlPreviewEl.value.trim();
+  if (!html) { alert('Click "View HTML" first to extract the code.'); return; }
+  const w = window.open('', 'gemma-render');
+  w.document.write(html);
+  w.document.close();
+};
+
+window.myCopyHtml = () => {
+  const html = htmlPreviewEl.value.trim();
+  if (!html) { alert('Click "View HTML" first to extract the code.'); return; }
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(html).then(() => alert('Copied to clipboard.'));
+  } else {
+    htmlPreviewEl.select();
+    document.execCommand('copy');
+    alert('Copied (legacy method).');
+  }
+};
+
+// ── Camera ────────────────────────────────────────────────────────────────
+let camStream = null;
+
+window.myStartCam = async () => {
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: true });
+    camVideo.srcObject = camStream;
+    camVideo.style.display = 'block';
+    camStatus.textContent = 'Camera active — aim and click Capture.';
+    document.getElementById('cam-start-btn').style.display = 'none';
+    camCaptureBtn.style.display = 'inline';
+  } catch (e) {
+    camStatus.textContent = 'Camera error: ' + e.message;
+  }
+};
+
+window.myCapture = () => {
+  const ctx = camCanvas.getContext('2d');
+  ctx.drawImage(camVideo, 0, 0, camCanvas.width, camCanvas.height);
+  capturedImageDataUrl = camCanvas.toDataURL('image/jpeg', 0.85);
+  camPreview.src = capturedImageDataUrl;
+  camPreview.style.display = 'block';
+  camVideo.style.display = 'none';
+  camCaptureBtn.style.display = 'none';
+  camClearBtn.style.display = 'inline';
+  imageBadge.style.display = 'block';
+  if (camStream) camStream.getTracks().forEach(t => t.stop());
+  camStatus.textContent = 'Frame captured — will be sent with your next message.';
+};
+
+window.myClearImage = () => {
+  capturedImageDataUrl = null;
+  camPreview.style.display = 'none';
+  camClearBtn.style.display = 'none';
+  imageBadge.style.display = 'none';
+  document.getElementById('cam-start-btn').style.display = 'inline';
+  camStatus.textContent = 'Image cleared.';
+};
+
+// ── Microphone — Web Speech API / Chrome SODA on-device (Chrome 139+) ────
+// Note: In Chrome 139+, setting processLocally:true uses SODA (on-device).
+// The standard webkitSpeechRecognition uses this automatically in newer Chrome.
+// This produces TEXT which is then sent to Gemma — Gemma does not see raw audio.
+let recognition = null;
+let micActive   = false;
+
+window.myToggleMic = () => {
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRec) {
+    micStatus.textContent = 'Not supported. Use Chrome or Edge.';
+    return;
+  }
+  if (micActive) {
+    recognition.stop();
+    return;
+  }
+  recognition = new SpeechRec();
+  recognition.lang = 'en-US';
+  recognition.interimResults = true;  // show partial text while speaking
+  recognition.continuous = false;     // one utterance; click again to record more
+
+  recognition.onstart = () => {
+    micActive = true;
+    micBtn.textContent = '⏹ Stop Microphone';
+    micStatus.textContent = 'Listening…';
+    micTranscript.textContent = '';
+  };
+
+  recognition.onresult = (e) => {
+    let interim = '';
+    let final   = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) final += e.results[i][0].transcript;
+      else interim += e.results[i][0].transcript;
+    }
+    // Show partial results in real-time
+    micTranscript.textContent = interim || ('Transcribed: ' + final);
+    if (final) {
+      // Append to input box so user can edit before sending
+      inputEl.value = (inputEl.value + ' ' + final).trim();
+    }
+  };
+
+  recognition.onerror = (e) => {
+    micStatus.textContent = 'Error: ' + e.error;
+    micActive = false;
+    micBtn.textContent = '🎤 Start Microphone';
+  };
+
+  recognition.onend = () => {
+    micActive = false;
+    micBtn.textContent = '🎤 Start Microphone';
+    if (!micStatus.textContent.startsWith('Error')) {
+      micStatus.textContent = 'Done — text added to input box. Click mic again to add more.';
+    }
+  };
+
+  recognition.start();
+};
+
+// ── Load model ────────────────────────────────────────────────────────────
+async function loadModel() {
+  const { pipeline, TextStreamer } = await import(CDN);
+  window.__TextStreamer = TextStreamer;
+
+  const modelId = document.getElementById('model-input').value.trim();
+  const device   = document.getElementById('device').value;
+  const dtype    = document.getElementById('dtype').value;
+
+  loadBtn.disabled = true;
+  setStatus(`Loading ${modelId} (device=${device}, dtype=${dtype})…`);
+  progressEl.style.display = 'block';
+  barEl.style.width = '0%';
+
+  try {
+    pipe = await pipeline('text-generation', modelId, {
+      device,
+      dtype,
+      progress_callback(p) {
+        if (p.status === 'progress') {
+          const pct = p.progress ?? 0;
+          barEl.style.width = pct.toFixed(1) + '%';
+          setStatus(`Downloading: ${p.file ?? ''} — ${pct.toFixed(1)}%`);
+        } else if (p.status === 'done') {
+          setStatus(`Cached: ${p.file ?? ''}`);
+        } else if (p.status === 'ready') {
+          setStatus('Model ready ✓');
+        }
+      }
+    });
+  } catch (err) {
+    setStatus('Error loading model: ' + err.message);
+    console.error(err);
+    loadBtn.disabled = false;
+    return;
+  }
+
+  progressEl.style.display = 'none';
+  setStatus('Model ready ✓  (cached — reloads instantly next time, even offline)');
+  loadPanel.style.display = 'none';
+  chatPanel.style.display = 'block';
+  inputEl.disabled = false;
+  sendBtn.disabled = false;
+  inputEl.focus();
+}
+
+// ── Send message ──────────────────────────────────────────────────────────
+async function send() {
+  if (!pipe || generating) return;
+  const myText = inputEl.value.trim();
+  if (!myText && !capturedImageDataUrl) return;
+
+  inputEl.value = '';
+  inputEl.disabled = true;
+  sendBtn.disabled = true;
+  stopBtn.style.display = 'inline-block';
+  generating = true;
+  stopFlag   = false;
+
+  // Build message content: text only, or text + image (multimodal)
+  let messageContent;
+  if (capturedImageDataUrl) {
+    messageContent = [
+      { type: 'image', image: capturedImageDataUrl },
+      { type: 'text',  text: myText || 'Describe this image in detail.' }
+    ];
+    appendChat('user', (myText || '[no text — image only]') + '  📎[image attached]');
+    window.myClearImage();
+  } else {
+    messageContent = myText;
+    appendChat('user', myText);
+  }
+
+  history.push({ role: 'user', content: messageContent });
+  const myAssistantDiv = appendChat('assistant', '…');
+  let myPartial = '';
+
+  startLiveClock();
+
+  const myMaxTokens   = parseInt(document.getElementById('max-tokens').value)   || 512;
+  const myTemperature = parseFloat(document.getElementById('temperature').value) || 1.0;
+
+  const TextStreamer = window.__TextStreamer;
+  const myStreamer = new TextStreamer(pipe.tokenizer, {
+    skip_prompt: true,
+    skip_special_tokens: true,
+    callback_function(token) {
+      if (stopFlag) return;
+      myPartial += token;
+      tokCount++;
+      myAssistantDiv.textContent = '◀ Gemma: ' + myPartial;
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+  });
+
+  try {
+    await pipe(history, {
+      max_new_tokens: myMaxTokens,
+      temperature: myTemperature,
+      do_sample: myTemperature !== 1.0,
+      streamer: myStreamer,
+    });
+    history.push({ role: 'assistant', content: myPartial });
+  } catch (err) {
+    if (!stopFlag) {
+      myAssistantDiv.textContent = '◀ Gemma: [Error] ' + err.message;
+      console.error(err);
+    }
+  }
+
+  stopLiveClock();
+  generating = false;
+  stopFlag   = false;
+  stopBtn.style.display = 'none';
+  inputEl.disabled = false;
+  sendBtn.disabled = false;
+  inputEl.focus();
+}
+
+// ── Stop ──────────────────────────────────────────────────────────────────
+function stop() {
+  stopFlag = true;
+  setStatus('Stopping after current token…');
+}
+
+// ── Reload ────────────────────────────────────────────────────────────────
+async function reload() {
+  pipe = null;
+  clearChat();
+  chatPanel.style.display = 'none';
+  loadPanel.style.display = 'block';
+  loadBtn.disabled = false;
+  setStatus('');
+}
+
+// ── Enter key ─────────────────────────────────────────────────────────────
+inputEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+
+// ── Expose globals ────────────────────────────────────────────────────────
+window.mySend   = send;
+window.myStop   = stop;
+window.myReload = reload;
+window.myClear  = clearChat;
+window.myLoad   = loadModel;
+
+</script>
+
+<br>
+<small>By <a href="https://ca.linkedin.com/in/jeremy-ellis-4237a9bb">Jeremy Ellis</a> ·
+<a href="https://github.com/webmcu-ai" target="_blank">webmcu-ai on GitHub</a> · Use at your own risk.</small>
+
+</body>
+</html>
