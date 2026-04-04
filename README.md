@@ -1,6 +1,9 @@
 # my-examples-of-gemma4
 client-side-gemma4-works without internet after first download and from rebooted computer
 
+
+Demo at   https://hpssjellis.github.io/my-examples-of-gemma4/index.html
+
 download the repository
 double click the index  or test online but will also have to download the index.html for the pager to work from a rebooted offline computer
 
