@@ -27,7 +27,7 @@
   <label>Model ID:<br>
     <input id="model-input" type="text" value="onnx-community/gemma-4-E2B-it-ONNX"
       style="width:420px;font-family:monospace;padding:4px">
-  </label><br><br>
+  </label> For a larger model try 'E4B', needs a powerful computer<br><br>
 
   <label>Device:
     <select id="device">
@@ -45,7 +45,7 @@
     </select>
   </label><br><br>
 
-<button id="load-btn" onclick="window.myLoad()">🚀 Load Model (Uses Cache)</button>
+<button id="load-btn" onclick="window.myLoad()">🚀 Load Model (Uses Cache after first download)</button>
 </div>
 
 <div id="status" style="color:#555;margin:8px 0;min-height:1.4em"></div>
@@ -171,7 +171,7 @@ Use at your own risk</h6>
     </select>
   </label><br><br>
 
-<button id="load-btn" onclick="window.myLoad()">🚀 Load Model (Uses Cache)</button>
+<button id="load-btn" onclick="window.myLoad()">🚀 Load Model (Uses Cache after first download)</button>
 </div>
 
 <div id="status" style="color:#555;margin:8px 0;min-height:1.4em"></div>
@@ -393,7 +393,7 @@ async function myLoadModel() {
         } else if (p.status === 'progress') {
           const myPct = p.progress ?? 0;
           barEl.style.width = myPct.toFixed(1) + '%';
-          setStatus('Downloading: ' + p.file + ' — ' + myPct.toFixed(1) + '%');
+          setStatus('Downloading or from cache ' + p.file + ' — ' + myPct.toFixed(1) + '%');
         } else if (p.status === 'done') {
           setStatus('Verified: ' + p.file);
         } else if (p.status === 'ready') {
@@ -651,7 +651,7 @@ async function myLoadModel() {
         } else if (p.status === 'progress') {
           const myPct = p.progress ?? 0;
           barEl.style.width = myPct.toFixed(1) + '%';
-          setStatus('Downloading: ' + p.file + ' — ' + myPct.toFixed(1) + '%');
+          setStatus('Downloading or from cache ' + p.file + ' — ' + myPct.toFixed(1) + '%');
         } else if (p.status === 'done') {
           setStatus('Verified: ' + p.file);
         } else if (p.status === 'ready') {
