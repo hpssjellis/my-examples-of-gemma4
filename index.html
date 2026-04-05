@@ -115,7 +115,11 @@
     min-height:200px;max-height:500px;overflow-y:auto;font-family:monospace;
     font-size:0.9em;line-height:1.5;white-space:pre-wrap"></div>
 
-  <div id="stats" style="font-size:0.8em;color:#888;margin:4px 0;min-height:1.2em"></div>
+<div id="stats" style="font-size:0.8em;color:#888;margin:4px 0;min-height:1.2em; border-bottom: 1px solid #eee; padding-bottom: 5px;">
+    <span id="my-input-stats" style="font-weight:bold;">Input: 0 tokens</span> 
+    <span style="margin: 0 10px;">|</span>
+    <span id="my-output-stats">⏱ 0.0s elapsed · 0 tokens out</span>
+</div>
 
   <div style="display:flex;gap:8px;margin-top:4px">
     <input id="user-input" type="text"
@@ -168,18 +172,27 @@ const mathOutputEl  = document.getElementById('myMathOutput');
 
 function setStatus(msg) { statusEl.textContent = msg; }
 
+
+// Attach the listener to your input field so it updates as you type
+document.getElementById('user-input').addEventListener('input', myUpdateInputCount);
+
 function startLiveClock() {
   t0 = performance.now();
   tokCount = 0;
   clearInterval(timerTick);
+  
   timerTick = setInterval(() => {
     if (!generating) { clearInterval(timerTick); return; }
-    const sec = ((performance.now() - t0) / 1000).toFixed(1);
-    const tps = tokCount > 0 ? (tokCount / ((performance.now() - t0) / 1000)).toFixed(1) : '—';
-    statsEl.textContent = `⏱ ${sec}s elapsed · ${tokCount} tokens out · ${tps} tok/s — generating…`;
+    const mySec = ((performance.now() - t0) / 1000).toFixed(1);
+    const myTps = tokCount > 0 ? (tokCount / ((performance.now() - t0) / 1000)).toFixed(1) : '—';
+    
+    // Update only the output span so we don't overwrite the input count
+    const myOutputEl = document.getElementById('my-output-stats');
+    if (myOutputEl) {
+      myOutputEl.textContent = `⏱ ${mySec}s elapsed · ${tokCount} tokens out · ${myTps} tok/s — generating…`;
+    }
   }, 200);
   
-  // Auto-render math every 3 seconds during generation
   clearInterval(mathTimer);
   mathTimer = setInterval(window.myRenderMath, 3000);
 }
@@ -189,7 +202,10 @@ function stopLiveClock() {
   clearInterval(mathTimer);
   const sec = ((performance.now() - t0) / 1000).toFixed(1);
   const tps = tokCount > 0 ? (tokCount / ((performance.now() - t0) / 1000)).toFixed(1) : '—';
-  statsEl.textContent = `Done — ${sec}s · ${tokCount} tokens out · ${tps} tok/s`;
+  const myOutputEl = document.getElementById('my-output-stats');
+  if (myOutputEl) {
+        myOutputEl.textContent = `Done — ${sec}s · ${tokCount} tokens out · ${tps} tok/s`;
+     }
   window.myRenderMath(); // Final render
 }
 
@@ -303,6 +319,7 @@ async function myLoadModel() {
   inputEl.disabled = false;
   sendBtn.disabled = false;
   inputEl.focus();
+  myUpdateInputCount(); // Initial count after load
 }
 
 async function mySend() {
@@ -311,6 +328,7 @@ async function mySend() {
   if (!myText) return;
 
   inputEl.value = '';
+  myUpdateInputCount(); // Reset counter to reflect history only
   inputEl.disabled = true;
   sendBtn.disabled = true;
   stopBtn.style.display = 'inline-block';
@@ -387,6 +405,37 @@ window.myReload = () => {
   loadBtn.disabled = false;
   setStatus('');
 };
+
+// New helper to calculate the "cost" of the prompt and history
+function myUpdateInputCount() {
+  const myText = document.getElementById('user-input').value;
+  const mySystem = document.getElementById('system-prompt').value;
+  
+  // Start with current text
+  let myFullText = myText + " " + mySystem;
+  
+  // Loop through history to include previous turns
+  history.forEach(myTurn => {
+    myFullText += " " + myTurn.content;
+  });
+  
+  // Filter out empty strings from multiple spaces to get an accurate word count
+  const myWords = myFullText.split(/\s+/).filter(myWord => myWord.length > 0);
+  const myWordCount = myWords.length;
+  
+  // Use your 1.3 multiplier for the token estimate
+  const myEstTokens = Math.ceil(myWordCount * 1.3); 
+
+  const myInStats = document.getElementById('my-input-stats');
+  if (myInStats) {
+    myInStats.textContent = `Input: ~${myEstTokens} tokens (est.)`;
+    // Red warning if the estimate nears the browser's typical VRAM limit
+    myInStats.style.color = myEstTokens > 10000 ? '#d94a4a' : '#888';
+  }
+}
+
+// Update count every time the user types
+document.getElementById('user-input').addEventListener('input', myUpdateInputCount);
 
 inputEl.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { 
