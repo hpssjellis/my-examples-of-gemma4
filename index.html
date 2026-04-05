@@ -327,6 +327,10 @@ async function mySend() {
   const myText = inputEl.value.trim();
   if (!myText) return;
 
+      // 1. Add to history FIRST so the counter can see it
+      history.push({ role: 'user', content: myText });
+      appendChat('user', myText);
+
   inputEl.value = '';
   myUpdateInputCount(); // Reset counter to reflect history only
   inputEl.disabled = true;
@@ -336,8 +340,6 @@ async function mySend() {
 
   myStoppingCriteria = new window.__ISC();
 
-  appendChat('user', myText);
-  history.push({ role: 'user', content: myText });
   
   const myAssistantDiv = appendChat('assistant', '…');
   let myPartial = '';
