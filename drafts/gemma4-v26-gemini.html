@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Gemma 4 + Local Memory</title>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@4.0.0-alpha.1/es5/tex-mml-chtml.js"></script>
+</head>
+<body style="font-family: sans-serif; padding: 20px;">
+
+<h1>Gemma 4 + Local Memory (MemPalace Lite)</h1>
+
+<textarea id="system-prompt" rows="2" style="width:100%">You are a helpful assistant.</textarea><br><br>
+
+<input id="user-input" type="text" style="width:80%">
+<input type="button" value="Send" onclick="mySend()">
+<input type="button" value="Clear Chat" onclick="myClear()"><br><br>
+
+<div id="chat" style="border:1px solid #ccc; padding:10px; height:200px; overflow:auto; white-space:pre-wrap"></div>
+
+<hr>
+
+<!-- MEMORY UI -->
+<h3>🧠 Memory</h3>
+
+<input type="button" value="Save Memory" onclick="mySaveMemory()">
+<input type="button" value="Load Memory" onclick="myLoadMemory()">
+<input type="button" value="Download JSON" onclick="myDownloadMemory()">
+<input type="file" onchange="myUploadMemory(this)">
+<input type="button" value="Clear Memory" onclick="myClearMemory()"><br><br>
+
+<textarea id="myMemoryText" rows="10" style="width:100%"></textarea>
+
+<script type="module">
+
+const CDN = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.0.1';
+
+let pipe = null;
+let history = [];
+let myMemoryStore = [];
+
+const chatEl = document.getElementById('chat');
+const inputEl = document.getElementById('user-input');
+
+function appendChat(role, text) {
+  const div = document.createElement('div');
+  div.textContent = (role === 'user' ? '▶ You: ' : '◀ Gemma: ') + text;
+  chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+window.myClear = () => {
+  chatEl.innerHTML = '';
+  history = [];
+};
+
+function mySaveMemory() {
+  localStorage.setItem("myMemoryStore", JSON.stringify(myMemoryStore));
+  document.getElementById("myMemoryText").value = JSON.stringify(myMemoryStore, null, 2);
+}
+
+function myLoadMemory() {
+  const myData = localStorage.getItem("myMemoryStore");
+  if (myData) {
+    myMemoryStore = JSON.parse(myData);
+    document.getElementById("myMemoryText").value = JSON.stringify(myMemoryStore, null, 2);
+  }
+}
+
+function myDownloadMemory() {
+  const myBlob = new Blob([JSON.stringify(myMemoryStore, null, 2)], { type: "application/json" });
+  const myUrl = URL.createObjectURL(myBlob);
+  const myA = document.createElement("a");
+  myA.href = myUrl;
+  myA.download = "mymemory.json";
+  myA.click();
+}
+
+function myUploadMemory(myFileInput) {
+  const myFile = myFileInput.files[0];
+  if (!myFile) return;
+  const myReader = new FileReader();
+  myReader.onload = function(e) {
+    myMemoryStore = JSON.parse(e.target.result);
+    mySaveMemory();
+  };
+  myReader.readAsText(myFile);
+}
+
+function myClearMemory() {
+  myMemoryStore = [];
+  localStorage.removeItem("myMemoryStore");
+  document.getElementById("myMemoryText").value = "";
+}
+
+function myStoreMemory(myText) {
+  myMemoryStore.push({ myText: myText });
+  mySaveMemory();
+}
+
+function mySearchMemory(myQuery) {
+  return myMemoryStore
+    .filter(m => m.myText.toLowerCase().includes(myQuery.toLowerCase()))
+    .slice(0, 5)
+    .map(m => m.myText);
+}
+
+async function myLoad() {
+  const { pipeline } = await import(CDN);
+  pipe = await pipeline('text-generation', 'onnx-community/gemma-4-E2B-it-ONNX', {
+    device: 'webgpu',
+    dtype: 'q4'
+  });
+}
+
+async function mySend() {
+  if (!pipe) {
+    await myLoad();
+  }
+
+  const myText = inputEl.value.trim();
+  if (!myText) return;
+
+  appendChat('user', myText);
+  history.push({ role: 'user', content: myText });
+
+  myStoreMemory(myText);
+
+  const myRelevant = mySearchMemory(myText);
+
+  const myMemoryBlock = myRelevant.length
+    ? [{ role: 'user', content: "Relevant memory:\n" + myRelevant.join("\n") }]
+    : [];
+
+  const myMessages = [
+    ...myMemoryBlock,
+    { role: 'user', content: document.getElementById('system-prompt').value },
+    ...history
+  ];
+
+  inputEl.value = '';
+
+  const output = await pipe(myMessages, {
+    max_new_tokens: 200
+  });
+
+  const myReply = output[0].generated_text;
+
+  appendChat('assistant', myReply);
+  history.push({ role: 'assistant', content: myReply });
+}
+
+window.mySend = mySend;
+
+myLoadMemory();
+
+</script>
+</body>
+</html>
