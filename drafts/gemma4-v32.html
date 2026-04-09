@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Gemma 4 — Transformers.js v4 (Teaching Demo v32)</title>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@4.0.0-alpha.1/es5/tex-mml-chtml.js"></script>
+</head>
+<body style="font-family: sans-serif; padding: 20px;">
+
+<h1>Gemma 4 · Transformers.js v4.0.1 — Teaching Demo v32</h1>
+
+<p>
+  This page runs a large language model <strong>entirely in your browser</strong>. 
+  Uses <a href="https://huggingface.co/onnx-community/gemma-4-E2B-it-ONNX" target="_blank">Gemma 4 E2B-IT (ONNX)</a>
+  via <a href="https://huggingface.co/docs/transformers.js" target="_blank">Transformers.js v4</a> and the CDN versions are at 
+<a href="https://cdn.jsdelivr.net/npm/@huggingface/transformers/">@huggingface/transformers</a>
+</p>
+
+<hr>
+
+<details open>
+  <summary>⚙ Generation Settings</summary>
+  <br>
+  <label><strong>System Prompt</strong>:<br>
+    <textarea id="system-prompt" rows="3" style="width:100%;font-family:monospace;padding:4px">
+You are a helpful assistant.
+Use the provided "Relevant past memory" if it is useful.
+If it is not relevant, ignore it.
+</textarea>
+  </label><br><br>
+
+  <label><strong>Max output tokens</strong>:<br>
+    <input type="number" id="max-tokens" value="5120" min="64" max="128000"> Higher = longer responses. Lower = cut off sooner.
+  </label><br><br>
+
+  <label><strong>Temperature</strong>:<br>
+    <input type="number" id="temperature" value="1.0" min="0.1" max="2.0" step="0.1"> 0.1 = most deterministic, 2.0 = most creative
+  </label><br><br>
+</details>
+
+<details>
+  <summary>📖 What is a token?</summary>
+  <p>A token is ~¾ of a word. Gemma 4 E2B context: 128,000 tokens.</p>
+</details>
+
+<div id="load-panel">
+  <p>
+    <strong>Step 1 — Adjust generation settings above if desired.</strong><br>
+    <strong>Step 2 — Choose model &amp; device below, then click Load Model.</strong><br>
+    First download is ~900 MB (q4). After that it is cached and reloads in seconds.
+  </p>
+
+  <label>Model ID:<br>
+    <input id="model-input" type="text" value="onnx-community/gemma-4-E2B-it-ONNX"
+      style="width:420px;font-family:monospace;padding:4px">
+  </label> For a larger model try 'E4B', needs a powerful computer<br><br>
+
+  <label>Device:
+    <select id="device">
+      <option value="webgpu" selected>webgpu — GPU via WebGPU (Chrome/Edge, fast)</option>
+      <option value="wasm">wasm — CPU via WebAssembly (any browser, slow)</option>
+    </select>
+  </label><br><br>
+
+  <label>Quantization (dtype):
+    <select id="dtype">
+      <option value="q4" selected>q4 — ~900 MB · fastest (recommended)</option>
+      <option value="q4f16">q4f16 — ~900 MB · needs fp16 GPU</option>
+      <option value="fp16">fp16 — ~2 GB · needs large VRAM</option>
+      <option value="fp32">fp32 — ~4 GB · full precision</option>
+    </select>
+  </label><br><br>
+
+<button id="load-btn" onclick="window.myLoad()">🚀 Load Model (Uses Cache after first download)</button>
+</div>
+
+<div id="status" style="color:#555;margin:8px 0;min-height:1.4em"></div>
+<div id="progress-wrap" style="display:none;max-width:600px">
+  <div style="height:8px;background:#ddd;border-radius:3px">
+    <div id="progress-bar" style="height:8px;background:#4a90d9;border-radius:3px;width:0%;transition:width 0.2s"></div>
+  </div>
+</div>
+
+<div id="chat-panel" style="display:none">
+
+  <hr>
+
+  <details>
+    <summary>⚙ Change settings / Reload model</summary>
+    <br>
+    <button onclick="window.myReload()">Reload model with current settings</button>
+    <p style="color:#888;font-size:0.9em">Edit System Prompt, Temperature, or Max Tokens above, then reload.</p>
+  </details>
+
+  <details>
+    <summary>🌐 HTML Viewer</summary>
+    <p>Render Gemma's HTML code here.</p>
+    <button onclick="window.myViewHtml()">View HTML</button>
+    <button onclick="window.myRenderHtml()">Render in New Tab</button>
+    <button onclick="window.myCopyHtml()">Copy HTML</button>
+    <br><br>
+    <textarea id="html-preview" rows="8" style="width:100%"
+      placeholder="HTML output will appear here..."></textarea>
+  </details>
+
+  <details>
+    <summary>∑ LATEX Viewer</summary>
+    <p>Mathematical formulas will be rendered below.</p>
+          <label><input type="checkbox" id="auto-math-toggle" > Auto-render while generating</label><br><br>
+    <button onclick="window.myRenderMath()">Render Manually</button>
+    <br><br>
+    <div id="myMathOutput" style="font-size: 1.2em; border: 1px solid #ccc; padding: 15px; background: #f9f9f9; min-height: 50px;">
+      Rendered math will appear here...
+    </div>
+  </details>
+
+  <br>
+
+  <div id="chat" style="background:white;border:1px solid #ccc;border-radius:4px;padding:12px;
+    min-height:200px;max-height:500px;overflow-y:auto;font-family:monospace;
+    font-size:0.9em;line-height:1.5;white-space:pre-wrap"></div>
+
+<div id="stats" style="font-size:0.8em;color:#888;margin:4px 0;min-height:1.2em; border-bottom: 1px solid #eee; padding-bottom: 5px;">
+    <span id="my-input-stats" style="font-weight:bold;">Input: 0 tokens</span> 
+    <span style="margin: 0 10px;">|</span>
+    <span id="my-output-stats">⏱ 0.0s elapsed · 0 tokens out</span>
+</div>
+
+  <div style="margin:6px 0 2px 0;font-size:0.9em">
+    <label style="cursor:pointer;user-select:none">
+      <input type="checkbox" id="myMemoryEnabled" checked
+        onchange="myOnMemoryToggle()">
+      🧠 Memory retrieval <span id="myMemoryStatus" style="font-weight:bold;color:#2a7a2a">ON</span>
+      <span style="color:#888;margin-left:8px">— uncheck to stop injecting past memory into the prompt</span>
+    </label>
+  </div>
+  <div style="display:flex;gap:8px;margin-top:4px">
+      placeholder="Type a message and press Enter"
+      disabled
+      style="flex:1;padding:8px;font-family:monospace;font-size:0.95em;border:1px solid #ccc;border-radius:4px">
+    <button id="send-btn" onclick="window.mySend()" disabled
+      style="padding:8px 16px;background:#4a90d9;color:white;border:none;border-radius:4px;cursor:pointer">Send</button>
+    <button id="stop-btn" onclick="window.myStop()"
+      style="display:none;padding:8px 16px;background:#d94a4a;color:white;border:none;border-radius:4px;cursor:pointer">Stop</button>
+    <button onclick="window.myClear()" style="padding:8px 16px;cursor:pointer">Clear Chat History</button>
+  </div>
+
+</div>
+
+
+
+<hr>
+
+<details>
+  <summary>🧠 Memory (LocalStorage)</summary><br>
+
+  <!-- Conversation selector row -->
+  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px">
+    <label style="font-weight:bold">Conversation:</label>
+    <select id="myConvSelect" onchange="myOnConvChange()" style="padding:4px 8px;font-family:monospace;min-width:160px"></select>
+    <input type="button" value="＋ New" onclick="myNewConversation()" style="padding:4px 10px">
+    <input type="button" value="✎ Rename" onclick="myRenameConversation()" style="padding:4px 10px">
+    <input type="button" value="🗑 Delete Conv" onclick="myDeleteConversation()" style="padding:4px 10px">
+  </div>
+
+  <!-- Toggle row: what gets saved into memory -->
+  <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin-bottom:10px;padding:8px;background:#f5f5f5;border-radius:4px;border:1px solid #ddd">
+    <span style="font-weight:bold;font-size:0.9em">Save to memory:</span>
+    <label style="font-size:0.9em"><input type="checkbox" id="myStorePrompt" checked> ▶ Prompts (your messages)</label>
+    <label style="font-size:0.9em"><input type="checkbox" id="myStoreReply" checked> ◀ Replies (Gemma's messages)</label>
+    <span style="color:#888;font-size:0.8em">Unchecked = excluded from saved memory &amp; context retrieval</span>
+  </div>
+
+  <!-- Action buttons -->
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+    <input type="button" value="📂 Load Memory" onclick="myLoadMemory()">
+    <input type="button" value="⬇ Download JSON" onclick="myDownloadMemory()">
+    <label style="padding:4px 10px;border:1px solid #ccc;border-radius:3px;cursor:pointer;background:#fff">
+      ⬆ Upload JSON<input type="file" onchange="myUploadMemory(this)" style="display:none">
+    </label>
+    <input type="button" value="🗑 Clear Memory" onclick="myClearMemory()"
+      style="background:#d94a4a;color:white;border:none;border-radius:3px;padding:4px 10px;cursor:pointer">
+  </div>
+
+  <textarea id="myMemoryText" rows="8" readonly
+    style="width:100%;font-family:monospace;box-sizing:border-box;background:#f5f5f5;color:#555;cursor:default"
+    placeholder="Memory display (read-only). Use Download/Upload JSON to edit externally."></textarea>
+</details>
+
+
+
+
+<p><small>By Jeremy Ellis 
+<a href="https://github.com/hpssjellis/hpssjellis">Github Profile</a> · 
+LinkedIn <a href="https://www.linkedin.com/in/jeremy-ellis-4237a9bb/">jeremy-ellis-4237a9bb</a> · 
+This Github <a href="https://github.com/hpssjellis/my-examples-of-gemma4">my-examples-of-gemma4</a><br>
+Use at your own risk</small></p>
+
+<script type="module">
+
+const CDN = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.0.1';
+
+// ── State ────────────────────────────────────────────────────────────────
+let pipe       = null;
+let history    = [];
+let generating = false;
+let myStoppingCriteria = null; 
+let t0         = 0;
+let tokCount   = 0;
+let timerTick  = null;
+let mathTimer  = null;
+
+// ── DOM refs ─────────────────────────────────────────────────────────────
+const statusEl      = document.getElementById('status');
+const progressEl    = document.getElementById('progress-wrap');
+const barEl         = document.getElementById('progress-bar');
+const chatEl        = document.getElementById('chat');
+const inputEl       = document.getElementById('user-input');
+const sendBtn       = document.getElementById('send-btn');
+const stopBtn       = document.getElementById('stop-btn');
+const statsEl       = document.getElementById('stats');
+const loadBtn       = document.getElementById('load-btn');
+const chatPanel     = document.getElementById('chat-panel');
+const loadPanel     = document.getElementById('load-panel');
+const htmlPreviewEl = document.getElementById('html-preview');
+const mathOutputEl  = document.getElementById('myMathOutput');
+
+function setStatus(msg) { statusEl.textContent = msg; }
+
+
+// Attach the listener to your input field so it updates as you type
+document.getElementById('user-input').addEventListener('input', myUpdateInputCount);
+
+function startLiveClock() {
+  t0 = performance.now();
+  tokCount = 0;
+  clearInterval(timerTick);
+  
+  timerTick = setInterval(() => {
+    if (!generating) { clearInterval(timerTick); return; }
+    const mySec = ((performance.now() - t0) / 1000).toFixed(1);
+    const myTps = tokCount > 0 ? (tokCount / ((performance.now() - t0) / 1000)).toFixed(1) : '—';
+    
+    // Update only the output span so we don't overwrite the input count
+    const myOutputEl = document.getElementById('my-output-stats');
+    if (myOutputEl) {
+      myOutputEl.textContent = `⏱ ${mySec}s elapsed · ${tokCount} tokens out · ${myTps} tok/s — generating…`;
+    }
+  }, 200);
+  
+  clearInterval(mathTimer);
+  const isAutoEnabled = document.getElementById('auto-math-toggle').checked;
+    if (isAutoEnabled) {
+        mathTimer = setInterval(window.myRenderMath, 1000);
+    }
+}
+
+function stopLiveClock() {
+  clearInterval(timerTick);
+  clearInterval(mathTimer);
+  const sec = ((performance.now() - t0) / 1000).toFixed(1);
+  const tps = tokCount > 0 ? (tokCount / ((performance.now() - t0) / 1000)).toFixed(1) : '—';
+  const myOutputEl = document.getElementById('my-output-stats');
+  if (myOutputEl) {
+        myOutputEl.textContent = `Done — ${sec}s · ${tokCount} tokens out · ${tps} tok/s`;
+     }
+  window.myRenderMath(); // Final render
+}
+
+function appendChat(role, text) {
+  const div = document.createElement('div');
+  div.className = role;
+  div.textContent = (role === 'user' ? '▶ You: ' : '◀ Gemma: ') + text;
+  chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return div;
+}
+
+window.myClear = () => {
+  chatEl.innerHTML = '';
+  history = [];
+  statsEl.textContent = '';
+  htmlPreviewEl.value = '';
+  mathOutputEl.innerHTML = 'Rendered math will appear here...';
+};
+
+// ── HTML/Math Viewers ───────────────────────────────────────────────────
+function extractHtml(str) {
+  const m = str.match(/<!DOCTYPE html>[\s\S]*?<\/html>/si)
+           || str.match(/<html[\s\S]*?<\/html>/si);
+  return m ? m[0] : str;
+}
+
+function lastAssistantText() {
+  const divs = chatEl.querySelectorAll('.assistant');
+  if (!divs.length) return '';
+  return divs[divs.length - 1].textContent.replace(/^◀ Gemma: /, '');
+}
+
+window.myViewHtml = () => {
+  const raw = lastAssistantText();
+  if (!raw) return;
+  htmlPreviewEl.value = extractHtml(raw);
+};
+
+window.myRenderHtml = () => {
+  const html = htmlPreviewEl.value.trim();
+  if (!html) return;
+  const w = window.open('', 'gemma-render');
+  w.document.write(html);
+  w.document.close();
+};
+
+window.myCopyHtml = () => {
+  const html = htmlPreviewEl.value.trim();
+  if (!html) return;
+  navigator.clipboard.writeText(html).then(() => alert('Copied.'));
+};
+
+window.myRenderMath = async () => {
+  let text = lastAssistantText();
+  if (!text) return;
+  // Basic markdown-like formatting for the preview
+  text = text.replace(/^###\s*(.*)$/gm, "<h2>$1</h2>")
+             .replace(/\n/g, ' <br> ')
+             .replace(/\*\*(.*?)\*\*/g, "<b>$1</b>");
+  mathOutputEl.innerHTML = text;
+  if (window.MathJax) {
+    await MathJax.typesetPromise([mathOutputEl]);
+  }
+};
+
+// ── Model Ops ────────────────────────────────────────────────────────────
+
+async function myLoadModel() {
+  const { pipeline, TextStreamer, InterruptableStoppingCriteria } = await import(CDN);
+  window.__TextStreamer = TextStreamer;
+  window.__ISC = InterruptableStoppingCriteria;
+  
+  const myModelId = document.getElementById('model-input').value.trim();
+  const myDevice = document.getElementById('device').value;
+  const myDtype = document.getElementById('dtype').value;
+  
+  loadBtn.disabled = true;
+  setStatus('Initializing… Checking browser cache.');
+  progressEl.style.display = 'block';
+  barEl.style.width = '0%';
+  
+  try {
+    pipe = await pipeline('text-generation', myModelId, {
+      device: myDevice,
+      dtype: myDtype,
+      progress_callback(p) {
+        if (p.status === 'initiate') {
+          setStatus('Checking cache for: ' + p.file);
+        } else if (p.status === 'download') {
+          setStatus('Downloading new model files to cache…');
+        } else if (p.status === 'progress') {
+          const myPct = p.progress ?? 0;
+          barEl.style.width = myPct.toFixed(1) + '%';
+          setStatus('Downloading or from cache ' + p.file + ' — ' + myPct.toFixed(1) + '%');
+        } else if (p.status === 'done') {
+          setStatus('Verified: ' + p.file);
+        } else if (p.status === 'ready') {
+          setStatus('Model Ready - Loading from cache ✓');
+        }
+      }
+    });
+  } catch (err) {
+    setStatus('Error: ' + err.message);
+    loadBtn.disabled = false;
+    return;
+  }
+  progressEl.style.display = 'none';
+  loadPanel.style.display = 'none';
+  chatPanel.style.display = 'block';
+  inputEl.disabled = false;
+  sendBtn.disabled = false;
+  inputEl.focus();
+  myUpdateInputCount(); // Initial count after load
+}
+
+async function mySend() {
+  if (!pipe || generating) return;
+  const myText = inputEl.value.trim();
+  myStoreMemory(myText, 'user');
+  const myRelevant = myMemoryEnabled ? mySearchMemory(myText) : [];
+  console.log("MEMORY USED:", myRelevant);
+  if (!myText) return;
+
+      // 1. Add to history FIRST so the counter can see it
+      history.push({ role: 'user', content: myText });
+      appendChat('user', myText);
+
+  inputEl.value = '';
+  myUpdateInputCount(); // Reset counter to reflect history only
+  inputEl.disabled = true;
+  sendBtn.disabled = true;
+  stopBtn.style.display = 'inline-block';
+  generating = true;
+
+  myStoppingCriteria = new window.__ISC();
+
+  
+  const myAssistantDiv = appendChat('assistant', '…');
+  let myPartial = '';
+  startLiveClock();
+
+  const myMaxTokens = parseInt(document.getElementById('max-tokens').value) || 512;
+  const myTemperature = parseFloat(document.getElementById('temperature').value) || 1.0;
+  const mySystemPrompt = document.getElementById('system-prompt').value.trim();
+
+  // Build history with system prompt prepended
+const myMemoryBlock = myRelevant.length
+  ? [{
+      role: 'user',
+      content: "Use this memory to answer the question:\n" + myRelevant.join("\n")
+    }]
+  : [];
+
+
+const myMessages = [
+  ...myMemoryBlock,
+  ...(mySystemPrompt ? [{ role: 'user', content: mySystemPrompt }] : []),
+  ...history.slice()
+];
+
+/*
+
+  const myMessages = mySystemPrompt
+    ? [{ role: 'user', content: mySystemPrompt }, ...history.slice()]
+    : history.slice();
+
+*/
+
+  // Note: Gemma uses 'user' turn for system-like instructions (no system role in its chat template)
+  
+  const myStreamer = new window.__TextStreamer(pipe.tokenizer, {
+    skip_prompt: true,
+    skip_special_tokens: true,
+    callback_function(token) {
+      myPartial += token;
+      tokCount++;
+      myAssistantDiv.textContent = '◀ Gemma: ' + myPartial;
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+  });
+
+  try {
+    await pipe(myMessages, {
+      max_new_tokens: myMaxTokens,
+      temperature: myTemperature,
+      do_sample: true,
+      streamer: myStreamer,
+      stopping_criteria: myStoppingCriteria
+    });
+    history.push({ role: 'assistant', content: myPartial });
+    myStoreMemory(myPartial, 'assistant');
+  } catch (err) {
+    if (myStoppingCriteria.interrupted) {
+      myAssistantDiv.textContent += ' [Stopped by user]';
+      history.push({ role: 'assistant', content: myPartial }); // keep partial context
+    } else {
+      myAssistantDiv.textContent = '◀ Gemma: [Error] ' + err.message;
+    }
+  } finally {
+    stopLiveClock();
+    generating = false;
+    stopBtn.style.display = 'none';
+    inputEl.disabled = false;
+    sendBtn.disabled = false;
+    inputEl.focus();
+  }
+}
+
+window.myStop = () => {
+  if (myStoppingCriteria) {
+    myStoppingCriteria.interrupt();
+    setStatus('Stop signal sent to model.');
+  }
+};
+
+window.myReload = () => {
+  pipe = null;
+  window.myClear();
+  chatPanel.style.display = 'none';
+  loadPanel.style.display = 'block';
+  loadBtn.disabled = false;
+  setStatus('');
+};
+
+// New helper to calculate the "cost" of the prompt and history
+function myUpdateInputCount() {
+  const myText = document.getElementById('user-input').value;
+  const mySystem = document.getElementById('system-prompt').value;
+  
+  // Start with current text
+  let myFullText = myText + " " + mySystem;
+  
+  // Loop through history to include previous turns
+  history.forEach(myTurn => {
+    myFullText += " " + myTurn.content;
+  });
+  
+  // Filter out empty strings from multiple spaces to get an accurate word count
+  const myWords = myFullText.split(/\s+/).filter(myWord => myWord.length > 0);
+  const myWordCount = myWords.length;
+  
+  // Use your 1.3 multiplier for the token estimate
+  const myEstTokens = Math.ceil(myWordCount * 1.3); 
+
+  const myInStats = document.getElementById('my-input-stats');
+  if (myInStats) {
+    myInStats.textContent = `Input: ~${myEstTokens} tokens (est.)`;
+    // Red warning if the estimate nears the browser's typical VRAM limit
+    myInStats.style.color = myEstTokens > 10000 ? '#d94a4a' : '#888';
+  }
+}
+
+// Update count every time the user types
+document.getElementById('user-input').addEventListener('input', myUpdateInputCount);
+
+inputEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { 
+    e.preventDefault(); 
+    mySend();
+  }
+});
+
+
+
+//////////////////////////// for mempalace ///////////////////////////////////
+
+// ── Memory enabled flag ────────────────────────────────────────────────────
+let myMemoryEnabled = true;
+
+window.myOnMemoryToggle = function() {
+  myMemoryEnabled = document.getElementById("myMemoryEnabled").checked;
+  const statusEl = document.getElementById("myMemoryStatus");
+  statusEl.textContent = myMemoryEnabled ? "ON" : "OFF";
+  statusEl.style.color  = myMemoryEnabled ? "#2a7a2a" : "#d94a4a";
+};
+
+// ── Multi-Conversation Memory ──────────────────────────────────────────────
+// Storage layout in localStorage:
+//   "myConvIndex"  → JSON array of { id, title } (ordered list of conversations)
+//   "myConv_<id>"  → JSON array of { myRole, myText, myTime }
+
+const CONV_INDEX_KEY = "myConvIndex";
+let myActiveConvId = null;
+let myMemoryStore = [];   // in-memory cache for the active conversation
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function myMakeId() {
+  return "conv_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+}
+
+function myGetConvIndex() {
+  try { return JSON.parse(localStorage.getItem(CONV_INDEX_KEY)) || []; }
+  catch { return []; }
+}
+
+function mySetConvIndex(idx) {
+  localStorage.setItem(CONV_INDEX_KEY, JSON.stringify(idx));
+}
+
+function myGetConvData(id) {
+  try { return JSON.parse(localStorage.getItem("myConv_" + id)) || []; }
+  catch { return []; }
+}
+
+function mySetConvData(id, data) {
+  localStorage.setItem("myConv_" + id, JSON.stringify(data));
+}
+
+function myDelConvData(id) {
+  localStorage.removeItem("myConv_" + id);
+}
+
+// ── Rebuild the <select> dropdown ─────────────────────────────────────────
+
+function myRebuildSelect() {
+  const sel = document.getElementById("myConvSelect");
+  const idx = myGetConvIndex();
+  sel.innerHTML = "";
+  idx.forEach(c => {
+    const opt = document.createElement("option");
+    opt.value = c.id;
+    opt.textContent = c.title;
+    if (c.id === myActiveConvId) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+// ── Switch active conversation ─────────────────────────────────────────────
+
+function myActivateConv(id) {
+  myActiveConvId = id;
+  myMemoryStore = myGetConvData(id);
+  myRefreshTextarea();
+  myRebuildSelect();
+}
+
+// ── Init on page load ──────────────────────────────────────────────────────
+
+function myInitMemory() {
+  let idx = myGetConvIndex();
+  if (!idx.length) {
+    // Create the default "General" conversation
+    const defaultId = myMakeId();
+    idx = [{ id: defaultId, title: "General" }];
+    mySetConvIndex(idx);
+  }
+  // Activate the first conversation
+  myActivateConv(idx[0].id);
+}
+
+// ── Conversation management ────────────────────────────────────────────────
+
+window.myOnConvChange = function() {
+  const sel = document.getElementById("myConvSelect");
+  myActivateConv(sel.value);
+};
+
+window.myNewConversation = function() {
+  const title = prompt("New conversation title:", "New Chat");
+  if (!title) return;
+  const id = myMakeId();
+  const idx = myGetConvIndex();
+  idx.push({ id, title });
+  mySetConvIndex(idx);
+  mySetConvData(id, []);
+  myActivateConv(id);
+};
+
+window.myRenameConversation = function() {
+  const idx = myGetConvIndex();
+  const entry = idx.find(c => c.id === myActiveConvId);
+  if (!entry) return;
+  const newTitle = prompt("Rename conversation:", entry.title);
+  if (!newTitle) return;
+  entry.title = newTitle;
+  mySetConvIndex(idx);
+  myRebuildSelect();
+};
+
+window.myDeleteConversation = function() {
+  const idx = myGetConvIndex();
+  if (idx.length <= 1) { alert("Cannot delete the last conversation."); return; }
+  const entry = idx.find(c => c.id === myActiveConvId);
+  if (!confirm(`Delete conversation "${entry?.title}"? This cannot be undone.`)) return;
+  const newIdx = idx.filter(c => c.id !== myActiveConvId);
+  myDelConvData(myActiveConvId);
+  mySetConvIndex(newIdx);
+  myActivateConv(newIdx[0].id);
+};
+
+// ── Core memory CRUD ────────────────────────────────────────────────────────
+
+function myRefreshTextarea() {
+  document.getElementById("myMemoryText").value =
+    myMemoryStore.length ? JSON.stringify(myMemoryStore, null, 2) : "";
+}
+
+function mySaveMemory() {
+  mySetConvData(myActiveConvId, myMemoryStore);
+  myRefreshTextarea();
+}
+
+function myLoadMemory() {
+  myMemoryStore = myGetConvData(myActiveConvId);
+  myRefreshTextarea();
+}
+
+function myDownloadMemory() {
+  const idx = myGetConvIndex();
+  const entry = idx.find(c => c.id === myActiveConvId);
+  const filename = (entry?.title || "memory").replace(/\s+/g, "_") + ".json";
+  const myBlob = new Blob([JSON.stringify(myMemoryStore, null, 2)], { type: "application/json" });
+  const myUrl = URL.createObjectURL(myBlob);
+  const myA = document.createElement("a");
+  myA.href = myUrl;
+  myA.download = filename;
+  myA.click();
+  URL.revokeObjectURL(myUrl);
+}
+
+function myUploadMemory(myFileInput) {
+  const myFile = myFileInput.files[0];
+  if (!myFile) return;
+  const myReader = new FileReader();
+  myReader.onload = function(e) {
+    try {
+      myMemoryStore = JSON.parse(e.target.result);
+      mySaveMemory();
+    } catch {
+      alert("Invalid JSON");
+    }
+  };
+  myReader.readAsText(myFile);
+  myFileInput.value = "";   // allow re-upload of same file
+}
+
+// Clear Memory: clears ONLY the active conversation's memory AND the textarea
+function myClearMemory() {
+  if (!confirm("Clear all memory for the active conversation? This cannot be undone.")) return;
+  myMemoryStore = [];
+  mySetConvData(myActiveConvId, []);
+  document.getElementById("myMemoryText").value = "";
+}
+
+// Store a single turn — respects the memory toggle AND prompt/reply toggles
+function myStoreMemory(myText, myRole) {
+  if (!myMemoryEnabled) return;
+  const storePrompt = document.getElementById("myStorePrompt").checked;
+  const storeReply  = document.getElementById("myStoreReply").checked;
+  if (myRole === "user"      && !storePrompt) return;
+  if (myRole === "assistant" && !storeReply)  return;
+  myMemoryStore.push({ myRole, myText, myTime: Date.now() });
+  mySaveMemory();
+}
+
+// Search memory — only across entries that exist (toggles already controlled storage)
+function mySearchMemory(myQuery) {
+  const myWords = myQuery.toLowerCase().split(/\s+/);
+  return myMemoryStore
+    .map(m => {
+      let myScore = 0;
+      myWords.forEach(w => { if (m.myText.toLowerCase().includes(w)) myScore++; });
+      return { myText: m.myText, myScore };
+    })
+    .filter(m => m.myScore > 0)
+    .sort((a, b) => b.myScore - a.myScore)
+    .slice(0, 5)
+    .map(m => m.myText);
+}
+
+/////////////////////////////// needed to access module functions  //////////////////////////
+
+window.mySend          = mySend;
+window.myLoad          = myLoadModel;
+window.myReload        = myReload;
+window.myLoadMemory    = myLoadMemory;
+window.myDownloadMemory= myDownloadMemory;
+window.myUploadMemory  = myUploadMemory;
+window.myClearMemory   = myClearMemory;
+
+myInitMemory();
+
+</script>
+
+
+
+
+
+
+
+</body>
+</html>
+
+<!-- END OF FILE — duplicate script block removed -->
