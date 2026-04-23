@@ -7,6 +7,7 @@ Best to download the repository or just copy the index.html to your computer run
 
 ### Replacement log
 
+1. April 23, 2026 [gemma4-v34.html](gemma4-v34.html)  Crazy good multimedia
 1. April 8th, 2026 [gemma4-v24-gemini.html](gemma4-v25-gemini.html) Toggle for LaTeX generation
 1. April 5th, 2026 [gemma4-v24-gemini.html](gemma4-v24-gemini.html)  Has input token count
 1. April 4th, 2026 [gemma4-v19-jer.html](gemma4-v19-jer.html) First real fully working version, with no multimodal
