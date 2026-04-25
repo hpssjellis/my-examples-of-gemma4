@@ -1,0 +1,1434 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Gemma 4 — Transformers.js v4 (Teaching Demo v37)</title>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@4.0.0-alpha.1/es5/tex-mml-chtml.js"></script>
+  <style>
+    /* ── Drop zone ── */
+    #media-drop-zone {
+      border: 2px dashed #4a90d9;
+      border-radius: 6px;
+      padding: 10px 14px;
+      background: #f0f6ff;
+      font-size: 0.88em;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+      min-height: 44px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-top: 6px;
+    }
+    #media-drop-zone.dragover { background: #cce0ff; border-color: #1a60c0; }
+    .drop-hint { color: #888; font-style: italic; user-select: none; }
+    .media-thumb {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: white;
+      border: 1px solid #b0c8e8;
+      border-radius: 4px;
+      padding: 3px 6px;
+      font-size: 0.82em;
+    }
+    .media-thumb img { height: 52px; width: 52px; object-fit: cover; border-radius: 3px; }
+    .remove-btn {
+      background: #d94a4a; color: white; border: none;
+      border-radius: 50%; width: 17px; height: 17px;
+      font-size: 11px; line-height: 17px; text-align: center;
+      cursor: pointer; padding: 0; flex-shrink: 0;
+    }
+    .thumb-name { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── Webcam panel ── */
+    #cam-panel {
+      background: #f8f8f8;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-top: 8px;
+      display: none;
+    }
+    #cam-panel.active { display: block; }
+    #cam-video {
+      display: block;
+      max-width: 100%;
+      width: 320px;
+      height: 240px;
+      background: #222;
+      border-radius: 4px;
+      object-fit: cover;
+    }
+    #cam-canvas { display: none; }
+    .cam-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+    .cam-btn {
+      padding: 5px 12px; border-radius: 4px; border: 1px solid #aaa;
+      cursor: pointer; background: #fff; font-size: 0.9em;
+    }
+    .cam-btn.active-cam { background: #d4edda; border-color: #4a9; }
+    .cam-btn.danger     { background: #fdecea; border-color: #d94a4a; color: #a00; }
+    #auto-capture-status {
+      font-size: 0.8em; font-style: italic; color: #555;
+      padding: 2px 6px; border-radius: 3px;
+    }
+    #auto-capture-status.running { color: #1a5c2a; background: #d4edda; }
+
+    /* chat media */
+    .chat-image {
+      max-height: 130px; max-width: 220px;
+      border-radius: 4px; display: block; margin: 4px 0; cursor: zoom-in;
+    }
+    audio.chat-audio { height: 30px; display: block; margin: 4px 0; }
+    .transcript-badge {
+      display: inline-block; background: #e8f4e8;
+      border: 1px solid #9c9; border-radius: 3px;
+      padding: 1px 6px; font-size: 0.78em; color: #333; margin: 2px 0;
+    }
+    #mode-badge {
+      display: inline-block; padding: 2px 8px;
+      border-radius: 3px; font-size: 0.82em; font-weight: bold;
+      margin-left: 10px; vertical-align: middle;
+    }
+    .mode-vision { background:#d4edda; color:#1a5c2a; border:1px solid #9c9; }
+    .mode-text   { background:#fff3cd; color:#7a4a00; border:1px solid #e0c040; }
+    .chat-turn   { white-space: pre-wrap; margin-bottom: 6px; }
+
+    /* video extract progress */
+    #vid-extract-msg { font-size:0.8em; color:#555; font-style:italic; margin-left:6px; }
+  </style>
+</head>
+<body style="font-family: sans-serif; padding: 20px;">
+
+<h1>Gemma 4 · Transformers.js v4.0.1 — Teaching Demo v37</h1>
+
+<p>
+  This page runs a large language model <strong>entirely in your browser</strong>.
+  Uses <a href="https://huggingface.co/onnx-community/gemma-4-E2B-it-ONNX" target="_blank">Gemma 4 E2B-IT (ONNX)</a>
+  via <a href="https://huggingface.co/docs/transformers.js" target="_blank">Transformers.js v4</a>.
+  CDN: <a href="https://cdn.jsdelivr.net/npm/@huggingface/transformers/">@huggingface/transformers</a>
+</p>
+
+<hr>
+
+<details open>
+  <summary>⚙ Generation Settings</summary>
+  <br>
+  <label><strong>System Prompt</strong>:<br>
+    <textarea id="system-prompt" rows="3" style="width:100%;font-family:monospace;padding:4px">You are a helpful assistant.
+Use the provided "Relevant past memory" if it is useful.
+If it is not relevant, ignore it.</textarea>
+  </label><br><br>
+  <label><strong>Max output tokens</strong>:<br>
+    <input type="number" id="max-tokens" value="2048" min="64" max="128000">
+    Higher = longer responses. Lower = cut off sooner.
+  </label><br><br>
+  <label><strong>Temperature</strong>:<br>
+    <input type="number" id="temperature" value="1.0" min="0.1" max="2.0" step="0.1">
+    0.1 = most deterministic, 2.0 = most creative
+  </label><br><br>
+</details>
+
+<details>
+  <summary>📖 What is a token?</summary>
+  <p>A token is ~¾ of a word. Gemma 4 E2B context: 128,000 tokens.</p>
+</details>
+
+<!-- ── Load panel ── -->
+<div id="load-panel">
+  <p>
+    <strong>Step 1 — Adjust generation settings above if desired.</strong><br>
+    <strong>Step 2 — Choose model &amp; device, then click Load Model.</strong><br>
+    First download ~900 MB (q4). After that it is cached and reloads in seconds.<br>
+    <strong>🖼 Vision mode</strong> uses <code>Gemma4ForConditionalGeneration</code> + <code>AutoProcessor</code>
+    for real image understanding (same model, slightly larger VRAM use).
+  </p>
+  <label>Model ID:<br>
+    <input id="model-input" type="text" value="onnx-community/gemma-4-E2B-it-ONNX"
+      style="width:420px;font-family:monospace;padding:4px">
+  </label> For a larger model try 'E4B', needs a powerful computer<br><br>
+  <label>Device:
+    <select id="device">
+      <option value="webgpu" selected>webgpu — GPU via WebGPU (Chrome/Edge, fast)</option>
+      <option value="wasm">wasm — CPU via WebAssembly (any browser, slow)</option>
+    </select>
+  </label><br><br>
+  <label>Quantization (dtype):
+    <select id="dtype">
+      <option value="q4" selected>q4 — ~900 MB · fastest (recommended)</option>
+      <option value="q4f16">q4f16 — ~900 MB · needs fp16 GPU</option>
+      <option value="fp16">fp16 — ~2 GB · needs large VRAM</option>
+      <option value="fp32">fp32 — ~4 GB · full precision</option>
+    </select>
+  </label><br><br>
+  <label style="font-size:0.95em">
+    <input type="checkbox" id="load-vision" checked>
+    <strong>Load Vision pipeline</strong>
+    (enables true image understanding via <code>Gemma4ForConditionalGeneration</code>)
+  </label><br><br>
+  <button id="load-btn" onclick="window.myLoad()">🚀 Load Model (Uses Cache after first download)</button>
+</div>
+
+<div id="status" style="color:#555;margin:8px 0;min-height:1.4em"></div>
+<div id="progress-wrap" style="display:none;max-width:600px">
+  <div style="height:8px;background:#ddd;border-radius:3px">
+    <div id="progress-bar" style="height:8px;background:#4a90d9;border-radius:3px;width:0%;transition:width 0.2s"></div>
+  </div>
+</div>
+
+<!-- ── Chat panel ── -->
+<div id="chat-panel" style="display:none">
+
+  <hr>
+
+  <details>
+    <summary>⚙ Change settings / Reload model</summary>
+    <br>
+    <button onclick="window.myReload()">Reload model with current settings</button>
+    <p style="color:#888;font-size:0.9em">Edit System Prompt, Temperature, or Max Tokens above, then reload.</p>
+  </details>
+
+  <details>
+    <summary>🌐 HTML Viewer</summary>
+    <p>Render Gemma's HTML code here.</p>
+    <button onclick="window.myViewHtml()">View HTML</button>
+    <button onclick="window.myRenderHtml()">Render in New Tab</button>
+    <button onclick="window.myCopyHtml()">Copy HTML</button>
+    <br><br>
+    <textarea id="html-preview" rows="8" style="width:100%" placeholder="HTML output will appear here..."></textarea>
+  </details>
+
+  <details>
+    <summary>∑ LATEX Viewer</summary>
+    <p>Mathematical formulas will be rendered below.</p>
+    <label><input type="checkbox" id="auto-math-toggle"> Auto-render while generating</label><br><br>
+    <button onclick="window.myRenderMath()">Render Manually</button>
+    <br><br>
+    <div id="myMathOutput" style="font-size:1.2em;border:1px solid #ccc;padding:15px;background:#f9f9f9;min-height:50px;">
+      Rendered math will appear here...
+    </div>
+  </details>
+
+  <br>
+
+  <div id="chat" style="background:white;border:1px solid #ccc;border-radius:4px;padding:12px;
+      min-height:200px;max-height:500px;overflow-y:auto;font-family:monospace;
+      font-size:0.9em;line-height:1.5"></div>
+
+  <div id="stats" style="font-size:0.8em;color:#888;margin:4px 0;min-height:1.2em;border-bottom:1px solid #eee;padding-bottom:5px;">
+    <span id="my-input-stats" style="font-weight:bold;">Input: 0 tokens</span>
+    <span style="margin:0 10px">|</span>
+    <span id="my-output-stats">⏱ 0.0s elapsed · 0 tokens out</span>
+    <span id="mode-badge" class="mode-text">TEXT ONLY</span>
+  </div>
+
+  <div style="margin:6px 0 2px;font-size:0.9em">
+    <label style="cursor:pointer;user-select:none">
+      <input type="checkbox" id="myMemoryEnabled"  onchange="myOnMemoryToggle()">
+      🧠 Memory retrieval <span id="myMemoryStatus" style="font-weight:bold;color:#2a7a2a">ON</span>
+      <span style="color:#888;margin-left:8px">— uncheck to stop injecting past memory into the prompt</span>
+    </label>
+  </div>
+
+  <!-- ── Drop zone — now accepts images, audio, AND video ── -->
+  <div id="media-drop-zone" title="Drop image, audio, or video files here, or click to browse">
+    <span class="drop-hint">🖼️🔊🎬 Drop images, audio, or video files here — or click to browse</span>
+  </div>
+  <input type="file" id="media-file-input" accept="image/*,audio/*,video/*" multiple
+    style="display:none" onchange="window.myOnMediaFileSelect(this)">
+  <div style="font-size:0.78em;color:#888;margin:2px 0 4px 2px">
+    Images → sent to vision pipeline &nbsp;|&nbsp;
+    Audio → <strong>auto-transcribed via Web Audio API</strong> (Chrome/Edge; no speakers needed) &nbsp;|&nbsp;
+    Video → extract
+    <input type="number" id="vid-frame-count" value="3" min="1" max="10" step="1"
+      style="width:48px;padding:1px 4px;border:1px solid #bbb;border-radius:3px;font-size:0.9em"
+      title="Number of frames to extract from dropped video">
+    evenly-spaced frames &nbsp;|&nbsp;
+    Image resolution (max px wide):
+    <select id="img-resolution"
+      style="padding:1px 4px;border:1px solid #bbb;border-radius:3px;font-size:0.9em"
+      title="Max width for all images — webcam captures, video frames, and uploaded images. Smaller = fewer tokens used by vision model.">
+      <option value="128">128 px — tiny (most frames fit)</option>
+      <option value="256" selected>256 px — small</option>
+      <option value="320">320 px</option>
+      <option value="480">480 px</option>
+      <option value="600" >600 px — default</option>
+      <option value="800">800 px</option>
+      <option value="1024">1024 px — large</option>
+    </select>
+    <span id="vid-extract-msg"></span>
+  </div>
+
+  <!-- ── Webcam panel ── -->
+  <div id="cam-panel">
+    <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+      <div>
+        <video id="cam-video" autoplay playsinline muted></video>
+        <canvas id="cam-canvas"></canvas>
+      </div>
+      <div style="flex:1;min-width:180px">
+        <div style="font-size:0.85em;color:#555;margin-bottom:6px">
+          <strong>📷 Webcam</strong>
+          <span id="cam-facing-label" style="margin-left:8px;color:#888;font-size:0.9em"></span>
+        </div>
+
+        <div class="cam-row">
+          <button class="cam-btn" onclick="window.myCamCapture()" title="Capture one frame and add to queue">
+            📸 Capture Now
+          </button>
+          <button class="cam-btn" onclick="window.myCamFlip()" title="Switch front/back camera">
+            🔄 Flip Camera
+          </button>
+          <button class="cam-btn danger" onclick="window.myCamStop()" title="Stop webcam">
+            ⏹ Stop Cam
+          </button>
+        </div>
+
+        <div class="cam-row" style="margin-top:10px">
+          <label style="font-size:0.88em;font-weight:bold">Auto-capture every</label>
+          <input type="number" id="auto-capture-secs" value="5" min="1" max="300" step="1"
+            style="width:60px;padding:3px 5px;border:1px solid #ccc;border-radius:3px;font-size:0.9em">
+          <label style="font-size:0.88em">seconds</label>
+          <button class="cam-btn" id="auto-capture-btn" onclick="window.myToggleAutoCapture()"
+            title="Automatically capture a frame every N seconds and add to queue">
+            ▶ Start Auto-capture
+          </button>
+          <span id="auto-capture-status"></span>
+        </div>
+
+        <div style="font-size:0.78em;color:#888;margin-top:8px">
+          Auto-capture adds each frame to the queue silently.<br>
+          Press <strong>Send</strong> (or Enter) at any time to send accumulated frames + your message.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Prompt row ── -->
+  <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+    <!-- Webcam toggle sits beside the input -->
+    <button id="cam-toggle-btn" onclick="window.myToggleCam()"
+      style="padding:8px 12px;border-radius:4px;border:1px solid #4a90d9;cursor:pointer;background:#e8f2ff;white-space:nowrap">
+      📷 Camera
+    </button>
+    <input id="user-input" type="text"
+      placeholder="Type a message and press Enter"
+      disabled
+      style="flex:1;min-width:160px;padding:8px;font-family:monospace;font-size:0.95em;border:1px solid #ccc;border-radius:4px">
+    <button id="send-btn" onclick="window.mySend()" disabled
+      style="padding:8px 16px;background:#4a90d9;color:white;border:none;border-radius:4px;cursor:pointer">Send</button>
+    <button id="stop-btn" onclick="window.myStop()"
+      style="display:none;padding:8px 16px;background:#d94a4a;color:white;border:none;border-radius:4px;cursor:pointer">Stop</button>
+    <button onclick="window.myClear()" title="Clears chat history, media queue, webcam, mic, and releases GPU/RAM memory" style="padding:8px 16px;cursor:pointer;background:#fff8e1;border:1px solid #e0c040;border-radius:4px">🗑 Clear + Free Memory</button>
+  </div>
+
+  <!-- ── Mic row ── -->
+  <div style="margin-top:6px;font-size:0.85em;color:#555;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <button id="mic-btn" onclick="window.myToggleMic()"
+      style="padding:4px 12px;border-radius:4px;border:1px solid #aaa;cursor:pointer;background:#fff">
+      🎙️ Start mic transcription
+    </button>
+    <span id="mic-status" style="color:#888;font-style:italic"></span>
+    <span id="mic-live" style="color:#2a7a2a;font-style:italic;max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+  </div>
+
+</div><!-- /chat-panel -->
+
+<hr>
+
+<!-- ── Memory ── -->
+<details>
+  <summary>🧠 Memory (LocalStorage)</summary><br>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px">
+    <label style="font-weight:bold">Conversation:</label>
+    <select id="myConvSelect" onchange="myOnConvChange()" style="padding:4px 8px;font-family:monospace;min-width:160px"></select>
+    <input type="button" value="＋ New"         onclick="myNewConversation()"    style="padding:4px 10px">
+    <input type="button" value="✎ Rename"      onclick="myRenameConversation()" style="padding:4px 10px">
+    <input type="button" value="🗑 Delete Conv" onclick="myDeleteConversation()" style="padding:4px 10px">
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin-bottom:10px;padding:8px;background:#f5f5f5;border-radius:4px;border:1px solid #ddd">
+    <span style="font-weight:bold;font-size:0.9em">Save to memory:</span>
+    <label style="font-size:0.9em"><input type="checkbox" id="myStorePrompt" checked> ▶ Prompts</label>
+    <label style="font-size:0.9em"><input type="checkbox" id="myStoreReply"  checked> ◀ Replies</label>
+    <span style="color:#888;font-size:0.8em">Unchecked = excluded from memory &amp; context retrieval</span>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+    <input type="button" value="📂 Load Memory"  onclick="myLoadMemory()">
+    <input type="button" value="⬇ Download JSON" onclick="myDownloadMemory()">
+    <label style="padding:4px 10px;border:1px solid #ccc;border-radius:3px;cursor:pointer;background:#fff">
+      ⬆ Upload JSON<input type="file" onchange="myUploadMemory(this)" style="display:none">
+    </label>
+    <input type="button" value="🗑 Clear Memory" onclick="myClearMemory()"
+      style="background:#d94a4a;color:white;border:none;border-radius:3px;padding:4px 10px;cursor:pointer">
+  </div>
+  <textarea id="myMemoryText" rows="8" readonly
+    style="width:100%;font-family:monospace;box-sizing:border-box;background:#f5f5f5;color:#555;cursor:default"
+    placeholder="Memory display (read-only). Use Download/Upload JSON to edit externally."></textarea>
+</details>
+
+<p><small>By Jeremy Ellis
+  <a href="https://github.com/hpssjellis/hpssjellis">Github Profile</a> ·
+  LinkedIn <a href="https://www.linkedin.com/in/jeremy-ellis-4237a9bb/">jeremy-ellis-4237a9bb</a> ·
+  <a href="https://github.com/hpssjellis/my-examples-of-gemma4">my-examples-of-gemma4</a><br>
+  Use at your own risk
+</small></p>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     SCRIPT
+     ════════════════════════════════════════════════════════════════════════ -->
+<script type="module">
+
+const CDN = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.0.1';
+
+// ── State ──────────────────────────────────────────────────────────────────
+let pipe        = null;
+let visionModel = null;
+let visionProc  = null;
+let visionMode  = false;
+let mySharedCanvas = new OffscreenCanvas(1024, 1024);
+let mySharedCtx = mySharedCanvas.getContext('2d');
+
+let history    = [];
+let generating = false;
+let myStoppingCriteria = null;
+let t0 = 0, tokCount = 0;
+let timerTick = null, mathTimer = null;
+
+// Media queue: [{type:'image'|'audio', name, dataUrl, transcript}]
+let myMediaQueue   = [];
+let myRecognition  = null;
+let myMicActive    = false;
+let myMicFinalText = '';
+
+// ── Webcam state ───────────────────────────────────────────────────────────
+let myCamStream        = null;   // active MediaStream
+let myCamFacingMode    = 'environment'; // 'environment'=back, 'user'=front
+let myAutoCaptureTimer = null;
+let myAutoCaptureCount = 0;
+
+// ── DOM refs ───────────────────────────────────────────────────────────────
+const statusEl        = document.getElementById('status');
+const progressEl      = document.getElementById('progress-wrap');
+const barEl           = document.getElementById('progress-bar');
+const chatEl          = document.getElementById('chat');
+const inputEl         = document.getElementById('user-input');
+const sendBtn         = document.getElementById('send-btn');
+const stopBtn         = document.getElementById('stop-btn');
+const loadBtn         = document.getElementById('load-btn');
+const chatPanel       = document.getElementById('chat-panel');
+const loadPanel       = document.getElementById('load-panel');
+const htmlPreviewEl   = document.getElementById('html-preview');
+const mathOutputEl    = document.getElementById('myMathOutput');
+const dropZone        = document.getElementById('media-drop-zone');
+const fileInputEl     = document.getElementById('media-file-input');
+const micBtn          = document.getElementById('mic-btn');
+const micStatus       = document.getElementById('mic-status');
+const micLive         = document.getElementById('mic-live');
+const modeBadge       = document.getElementById('mode-badge');
+const camPanel        = document.getElementById('cam-panel');
+const camVideo        = document.getElementById('cam-video');
+const camCanvas       = document.getElementById('cam-canvas');
+const camFacingLabel  = document.getElementById('cam-facing-label');
+const autoCaptureBtn  = document.getElementById('auto-capture-btn');
+const autoCaptureStatus = document.getElementById('auto-capture-status');
+const vidExtractMsg   = document.getElementById('vid-extract-msg');
+
+function setStatus(msg) { statusEl.textContent = msg; }
+function setModeBadge(vision) {
+  modeBadge.textContent = vision ? '🖼 VISION + TEXT' : 'TEXT ONLY';
+  modeBadge.className   = vision ? 'mode-vision' : 'mode-text';
+}
+
+// ── Timers ─────────────────────────────────────────────────────────────────
+function startLiveClock() {
+  t0 = performance.now(); tokCount = 0;
+  clearInterval(timerTick);
+  timerTick = setInterval(() => {
+    if (!generating) { clearInterval(timerTick); return; }
+    const sec = ((performance.now()-t0)/1000).toFixed(1);
+    const tps = tokCount>0 ? (tokCount/((performance.now()-t0)/1000)).toFixed(1) : '—';
+    document.getElementById('my-output-stats').textContent =
+      `⏱ ${sec}s elapsed · ${tokCount} tokens out · ${tps} tok/s — generating…`;
+  }, 200);
+  clearInterval(mathTimer);
+  if (document.getElementById('auto-math-toggle').checked)
+    mathTimer = setInterval(window.myRenderMath, 1000);
+}
+function stopLiveClock() {
+  clearInterval(timerTick); clearInterval(mathTimer);
+  const sec = ((performance.now()-t0)/1000).toFixed(1);
+  const tps = tokCount>0 ? (tokCount/((performance.now()-t0)/1000)).toFixed(1) : '—';
+  document.getElementById('my-output-stats').textContent =
+    `Done — ${sec}s · ${tokCount} tokens out · ${tps} tok/s`;
+  window.myRenderMath();
+}
+
+// ── Chat DOM helpers ───────────────────────────────────────────────────────
+function appendChat(role, text) {
+  const div = document.createElement('div');
+  div.className = 'chat-turn ' + role;
+  div.appendChild(document.createTextNode((role==='user'?'▶ You: ':'◀ Gemma: ') + text));
+  chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return div;
+}
+function appendMediaToDiv(div, items) {
+  items.forEach(m => {
+    if (m.type === 'image') {
+      const img = document.createElement('img');
+      img.src=m.dataUrl; img.className='chat-image';
+      img.alt=m.name; img.title='Click to open full size';
+      img.onclick = () => window.open(m.dataUrl,'_blank');
+      div.appendChild(img);
+    } else {
+      const aud = document.createElement('audio');
+      aud.src=m.dataUrl; aud.controls=true; aud.className='chat-audio';
+      div.appendChild(aud);
+      if (m.transcript) {
+        const badge = document.createElement('div');
+        badge.className='transcript-badge';
+        badge.textContent='🗒 Transcript: '+m.transcript;
+        div.appendChild(badge);
+      }
+    }
+  });
+}
+window.myClear = () => {
+  // 1. Stop any active generation
+  if (generating && myStoppingCriteria) { try { myStoppingCriteria.interrupt(); } catch(e) {} }
+  clearInterval(timerTick); clearInterval(mathTimer);
+  generating = false;
+
+  // 2. Stop webcam stream and auto-capture (frees camera + GPU memory)
+  clearInterval(myAutoCaptureTimer); myAutoCaptureTimer = null; myAutoCaptureCount = 0;
+  if (myCamStream) { myCamStream.getTracks().forEach(t => t.stop()); myCamStream = null; }
+  camVideo.srcObject = null;
+  camPanel.classList.remove('active');
+  autoCaptureBtn.textContent = '▶ Start Auto-capture';
+  autoCaptureBtn.classList.remove('active-cam');
+  autoCaptureStatus.textContent = '';
+
+  // 3. Stop mic recognition
+  if (myMicActive && myRecognition) { try { myRecognition.stop(); } catch(e) {} }
+  myMicActive = false; myMicFinalText = '';
+  micBtn.textContent = '🎙️ Start mic transcription'; micBtn.style.background = '#fff';
+  micStatus.textContent = ''; micLive.textContent = '';
+
+  // 4. Release dataURL strings in media queue (each JPEG can be ~100KB–2MB)
+  myMediaQueue.forEach(m => { m.dataUrl = ''; });
+  myMediaQueue = [];
+
+  // 5. Detach media src BEFORE clearing innerHTML so browser can GC buffers
+  chatEl.querySelectorAll('audio').forEach(a => { a.pause(); a.src = ''; a.load(); });
+  chatEl.querySelectorAll('img').forEach(img => { img.src = ''; });
+  chatEl.querySelectorAll('video').forEach(v => { v.pause(); v.src = ''; v.load(); });
+  chatEl.innerHTML = '';
+
+  // 6. Reset model conversation history (holds all token strings + base64 image data in RAM)
+  history.forEach(h => { h.content = null; });
+  history = [];
+
+  // 6b. Wipe any in-memory transcript from previous mic session
+  myMicFinalText = '';
+
+  // 6c. Release vision model KV-cache / past_key_values if they exist
+  // (Transformers.js caches attention states between calls — clear them)
+  try { if (visionModel && visionModel.sessions) {
+  //  Object.values(visionModel.sessions).forEach(s => { try { s.dispose?.(); } catch(e){} });
+  }} catch(e) {}
+  try { if (pipe && pipe.model && pipe.model.sessions) {
+    Object.values(pipe.model.sessions).forEach(s => { try { s.dispose?.(); } catch(e){} });
+  }} catch(e) {}
+
+  // 6d. Free any ObjectURLs still held by audio thumbs in drop zone
+  // (already handled above — belt and suspenders)
+
+  // 7. Reset UI state
+  stopBtn.style.display = 'none';
+  sendBtn.disabled = false; inputEl.disabled = false; inputEl.value = '';
+  document.getElementById('my-output-stats').textContent = '⏱ 0.0s elapsed · 0 tokens out';
+  document.getElementById('my-input-stats').textContent  = 'Input: 0 tokens';
+  htmlPreviewEl.value = '';
+  mathOutputEl.innerHTML = 'Rendered math will appear here...';
+  myRenderDropZone();
+
+  // 8. Hint to Chrome GC
+  if (window.gc) try { window.gc(); } catch(e) {}
+
+  setStatus('Chat cleared — history, media, camera and mic memory released.');
+};
+
+// ── HTML / Math viewers ────────────────────────────────────────────────────
+function extractHtml(str) {
+  const m = str.match(/<!DOCTYPE html>[\s\S]*?<\/html>/si)||str.match(/<html[\s\S]*?<\/html>/si);
+  return m?m[0]:str;
+}
+function lastAssistantText() {
+  const divs=chatEl.querySelectorAll('.assistant'); if(!divs.length)return'';
+  return divs[divs.length-1].childNodes[0]?.textContent?.replace(/^◀ Gemma: /,'')||'';
+}
+window.myViewHtml  = ()=>{ const r=lastAssistantText(); if(r) htmlPreviewEl.value=extractHtml(r); };
+window.myRenderHtml= ()=>{
+  const html=htmlPreviewEl.value.trim(); if(!html)return;
+  const w=window.open('','gemma-render'); w.document.write(html); w.document.close();
+};
+window.myCopyHtml  = ()=>{
+  const html=htmlPreviewEl.value.trim(); if(!html)return;
+  navigator.clipboard.writeText(html).then(()=>alert('Copied.'));
+};
+window.myRenderMath = async ()=>{
+  let text=lastAssistantText(); if(!text)return;
+  text=text.replace(/^###\s*(.*)$/gm,'<h2>$1</h2>')
+           .replace(/\n/g,' <br> ').replace(/\*\*(.*?)\*\*/g,'<b>$1</b>');
+  mathOutputEl.innerHTML=text;
+  if(window.MathJax) await MathJax.typesetPromise([mathOutputEl]);
+};
+
+// ── Model loading ──────────────────────────────────────────────────────────
+async function myLoadModel() {
+  const mod = await import(CDN);
+  const { pipeline, TextStreamer, InterruptableStoppingCriteria,
+          AutoProcessor, Gemma4ForConditionalGeneration } = mod;
+  window.__TextStreamer = TextStreamer;
+  window.__ISC         = InterruptableStoppingCriteria;
+
+  const myModelId  = document.getElementById('model-input').value.trim();
+  const myDevice   = document.getElementById('device').value;
+  const myDtype    = document.getElementById('dtype').value;
+  const loadVision = document.getElementById('load-vision').checked;
+
+  loadBtn.disabled=true; progressEl.style.display='block'; barEl.style.width='0%';
+
+  const progressCb = p=>{
+    if     (p.status==='initiate')  setStatus('Checking cache: '+p.file);
+    else if(p.status==='download')  setStatus('Downloading new model files…');
+    else if(p.status==='progress'){
+      const pct=(p.progress??0).toFixed(1);
+      barEl.style.width=pct+'%';
+      setStatus('Caching '+p.file+' — '+pct+'%');
+    }
+    else if(p.status==='done')  setStatus('Verified: '+p.file);
+    else if(p.status==='ready') setStatus('Ready ✓');
+  };
+
+  setStatus('Loading text pipeline…');
+  try {
+    pipe = await pipeline('text-generation', myModelId,
+      { device:myDevice, dtype:myDtype, progress_callback:progressCb });
+  } catch(err) {
+    setStatus('Error: '+err.message); loadBtn.disabled=false; return;
+  }
+
+  if (loadVision) {
+    setStatus('Loading AutoProcessor…');
+    try {
+      visionProc  = await AutoProcessor.from_pretrained(myModelId,{progress_callback:progressCb});
+      setStatus('Loading Gemma4ForConditionalGeneration…');
+      visionModel = await Gemma4ForConditionalGeneration.from_pretrained(myModelId,
+        { dtype:myDtype, device:myDevice, progress_callback:progressCb });
+      visionMode=true; setStatus('Vision pipeline ready ✓');
+    } catch(err) {
+      visionMode=false; visionModel=null; visionProc=null;
+      setStatus('Vision load failed ('+err.message.slice(0,80)+') — text-only mode.');
+    }
+  } else {
+    visionMode=false; setStatus('Loaded in text-only mode.');
+  }
+
+  progressEl.style.display='none'; loadPanel.style.display='none';
+  chatPanel.style.display='block';
+  inputEl.disabled=false; sendBtn.disabled=false; inputEl.focus();
+  setModeBadge(visionMode); myUpdateInputCount();
+}
+
+// ── Send ───────────────────────────────────────────────────────────────────
+async function mySend() {
+  if (!pipe || generating) return;
+
+  const myText    = inputEl.value.trim();
+  const mediaCopy = myMediaQueue.slice();
+  const imgItems  = mediaCopy.filter(m=>m.type==='image');
+  const audItems  = mediaCopy.filter(m=>m.type==='audio');
+
+  if (!myText && mediaCopy.length===0) return;
+
+  let contentText = myText;
+  audItems.forEach((m,i)=>{
+    if (m.transcript) {
+      contentText += `\n[Audio file "${m.name}" — transcript: "${m.transcript}"]`;
+    } else {
+      contentText += `\n[Audio file "${m.name}" was attached but could not be auto-transcribed. ` +
+        `The browser cannot read audio file data directly. ` +
+        `Inform the user their audio could not be processed and suggest they use the mic button to speak their question live.]`;
+    }
+  });
+  if (!visionMode) {
+    imgItems.forEach((m,i)=>{
+      contentText += `\n[Image ${i+1} "${m.name}" attached — describe from context]`;
+    });
+  }
+
+  myStoreMemory(contentText,'user');
+  const myRelevant = myMemoryEnabled ? mySearchMemory(contentText) : [];
+
+  const userDiv = appendChat('user', myText||(mediaCopy.length?'(media only)':''));
+  appendMediaToDiv(userDiv, mediaCopy);
+
+  myMediaQueue=[]; myRenderDropZone();
+  inputEl.value=''; myUpdateInputCount();
+  inputEl.disabled=true; sendBtn.disabled=true;
+  stopBtn.style.display='inline-block';
+  generating=true;
+  myStoppingCriteria=new window.__ISC();
+
+  const assistantDiv=appendChat('assistant','…');
+  let myPartial='';
+  startLiveClock();
+
+  const myMaxTokens   =parseInt(document.getElementById('max-tokens').value)||512;
+  const myTemperature =parseFloat(document.getElementById('temperature').value)||1.0;
+  const mySystemPrompt=document.getElementById('system-prompt').value.trim();
+
+  const memBlock = myRelevant.length
+    ?[{role:'user',content:'Use this memory:\n'+myRelevant.join('\n')}]:[];
+
+  const tokenCb = token=>{
+    myPartial+=token; tokCount++;
+    assistantDiv.childNodes[0].textContent='◀ Gemma: '+myPartial;
+    chatEl.scrollTop=chatEl.scrollHeight;
+  };
+
+  try {
+    // ── VISION PATH ────────────────────────────────────────────────────
+    if (visionMode && imgItems.length>0) {
+      const imagePlaceholders = imgItems.map(()=>({type:'image'}));
+      const textPart={type:'text',text:contentText||'Describe the image(s).'};
+      const userContent = mySystemPrompt
+        ?[{type:'text',text:mySystemPrompt},...imagePlaceholders,textPart]
+        :[...imagePlaceholders,textPart];
+
+      const visionMessages=[
+        ...memBlock,
+        ...history.map(h=>({role:h.role,content:h.content})),
+        {role:'user',content:userContent}
+      ];
+
+      const prompt=visionProc.apply_chat_template(visionMessages,{
+        enable_thinking:false, add_generation_prompt:true
+      });
+
+      const {RawImage}=await import(CDN);
+
+      // ── Warn user if sending multiple images (high VRAM risk) ────────────
+      if (imgItems.length > 1) {
+        setStatus(`⚠ Sending ${imgItems.length} images — if WebGPU crashes, try 1 image at a time or lower resolution.`);
+        await new Promise(r => setTimeout(r, 600)); // brief pause so user sees warning
+      }
+
+      // ── Build RawImages sequentially (not parallel) to avoid GPU OOM ────
+      // Each image is capped at 224 px — larger sizes reliably crash WebGPU
+      // on the MatMulNBits lm_head node when >1 image is in the batch.
+      const MY_MAX_SIZE = imgItems.length > 1 ? 224 : 336;
+      const rawImages = [];
+      for (const m of imgItems) {
+        const resp = await fetch(m.dataUrl);
+        const blob = await resp.blob();
+        const bmp  = await createImageBitmap(blob);
+
+        let myW = bmp.width;
+        let myH = bmp.height;
+        if (myW > MY_MAX_SIZE || myH > MY_MAX_SIZE) {
+          const myScale = Math.min(MY_MAX_SIZE / myW, MY_MAX_SIZE / myH);
+          myW = Math.floor(myW * myScale);
+          myH = Math.floor(myH * myScale);
+        }
+
+        mySharedCanvas.width  = myW;
+        mySharedCanvas.height = myH;
+        mySharedCtx.drawImage(bmp, 0, 0, myW, myH);
+        bmp.close();
+
+        const id = mySharedCtx.getImageData(0, 0, myW, myH);
+        rawImages.push(new RawImage(id.data, myW, myH, 4));
+        console.log(`Image ${rawImages.length}/${imgItems.length}: ${myW}×${myH}`);
+      }
+
+      const inputs=await visionProc(prompt,rawImages,null,{add_special_tokens:false});
+      const myStreamer=new window.__TextStreamer(visionProc.tokenizer,{
+        skip_prompt:true, skip_special_tokens:true, callback_function:tokenCb
+      });
+      try {
+        await visionModel.generate({
+          ...inputs, max_new_tokens:myMaxTokens,
+          do_sample:myTemperature>0.05, temperature:myTemperature,
+          streamer:myStreamer, stopping_criteria:myStoppingCriteria
+        });
+      } catch (err) {
+        // WebGPU context loss — "A valid external Instance reference no longer exists"
+        // or MatMulNBits OrtRun ERROR_CODE 1. Null out vision state so user can reload.
+        const isGpuCrash = err.message.includes('WebGPU') ||
+                           err.message.includes('OrtRun') ||
+                           err.message.includes('Instance reference') ||
+                           err.message.includes('MatMul');
+        if (isGpuCrash) {
+          console.warn('⚠ WebGPU/OrtRun crash — clearing vision model state');
+          visionModel = null; visionProc = null; visionMode = false;
+          setModeBadge(false);
+          assistantDiv.childNodes[0].textContent =
+            '◀ Gemma: [GPU crash — likely too many/large images. ' +
+            'Click "Reload model with current settings" and try again with 1 image or lower resolution.]';
+          setStatus('⚠ GPU pipeline lost — use ⚙ Change settings / Reload model to recover.');
+          return; // don't rethrow — recovery message already shown
+        }
+        throw err;
+      }
+
+
+
+
+      history.push({role:'user',content:contentText});
+      history.push({role:'assistant',content:myPartial});
+      myStoreMemory(myPartial,'assistant');
+
+    } else {
+      // ── TEXT PATH ──────────────────────────────────────────────────
+      history.push({role:'user',content:contentText});
+      const myMessages=[
+        ...memBlock,
+        ...(mySystemPrompt?[{role:'user',content:mySystemPrompt}]:[]),
+        ...history.slice()
+      ];
+      const myStreamer=new window.__TextStreamer(pipe.tokenizer,{
+        skip_prompt:true, skip_special_tokens:true, callback_function:tokenCb
+      });
+      await pipe(myMessages,{
+        max_new_tokens:myMaxTokens, temperature:myTemperature,
+        do_sample:true, streamer:myStreamer, stopping_criteria:myStoppingCriteria
+      });
+      history.push({role:'assistant',content:myPartial});
+      myStoreMemory(myPartial,'assistant');
+    }
+
+  } catch(err) {
+    if (myStoppingCriteria?.interrupted) {
+      assistantDiv.childNodes[0].textContent+=' [Stopped]';
+      history.push({role:'assistant',content:myPartial});
+    } else {
+      assistantDiv.childNodes[0].textContent='◀ Gemma: [Error] '+err.message;
+      console.error(err);
+    }
+  } finally {
+    stopLiveClock(); generating=false;
+    stopBtn.style.display='none';
+    inputEl.disabled=false; sendBtn.disabled=false; inputEl.focus();
+  }
+}
+
+window.myStop=()=>{ if(myStoppingCriteria) myStoppingCriteria.interrupt(); };
+window.myReload=()=>{
+  pipe=null; visionModel=null; visionProc=null; visionMode=false;
+  myCamStopAll();
+  window.myClear();
+  chatPanel.style.display='none'; loadPanel.style.display='block';
+  loadBtn.disabled=false; setStatus(''); setModeBadge(false);
+};
+
+// ── Token counter ──────────────────────────────────────────────────────────
+function myUpdateInputCount() {
+  const t=document.getElementById('user-input').value;
+  const s=document.getElementById('system-prompt').value;
+  let full=t+' '+s;
+  history.forEach(h=>{full+=' '+h.content;});
+  const est=Math.ceil(full.split(/\s+/).filter(w=>w).length*1.3);
+  const el=document.getElementById('my-input-stats');
+  if(el){el.textContent=`Input: ~${est} tokens (est.)`;el.style.color=est>10000?'#d94a4a':'#888';}
+}
+document.getElementById('user-input').addEventListener('input',myUpdateInputCount);
+inputEl.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();mySend();}
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+//  MULTIMEDIA — drop zone + file browse + video frame extraction
+// ══════════════════════════════════════════════════════════════════════════
+
+function myReadFile(file) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const rawUrl = e.target.result;
+      if (!file.type.startsWith('image/')) {
+        // Audio files — pass through unchanged
+        resolve({ type: 'audio', name: file.name, dataUrl: rawUrl, transcript: null });
+        return;
+      }
+      // Images — downscale to chosen resolution via canvas
+      const maxPx = myGetMaxPx();
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxPx / img.width, maxPx / img.height);
+        const outW  = Math.round(img.width  * scale);
+        const outH  = Math.round(img.height * scale);
+        console.log("Original image:", file.name, img.width + "x" + img.height);
+        console.log("Resized image:", outW + "x" + outH);
+        const canvas = document.createElement('canvas');
+        canvas.width = outW; canvas.height = outH;
+        canvas.getContext('2d').drawImage(img, 0, 0, outW, outH);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+        resolve({ type: 'image', name: file.name + ` (${outW}×${outH})`, dataUrl, transcript: null });
+      };
+      img.onerror = () => resolve({ type: 'image', name: file.name, dataUrl: rawUrl, transcript: null });
+      img.src = rawUrl;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// ── Audio file transcription via Web Audio API routing ────────────────────
+// Routes the audio file directly into SpeechRecognition via AudioContext +
+// MediaStreamDestination — no speakers needed, no mic bleed, no quiet-room req.
+// Falls back to the old speaker-play method if AudioContext is unavailable.
+function myTranscribeAudioFile(entry) {
+  return new Promise(async (resolve) => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      setStatus('⚠ Web Speech API not available — use Chrome or Edge for audio transcription.');
+      resolve(); return;
+    }
+
+    // ── Decode the dataUrl to an ArrayBuffer ──────────────────────────────
+    let audioBuffer;
+    try {
+      const base64 = entry.dataUrl.split(',')[1];
+      const binary  = atob(base64);
+      const bytes   = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const actx    = new (window.AudioContext || window.webkitAudioContext)();
+      audioBuffer   = await actx.decodeAudioData(bytes.buffer);
+
+      // ── Route: AudioBufferSourceNode → MediaStreamDestination ────────────
+      const dest   = actx.createMediaStreamDestination();
+      const source = actx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(dest);
+
+      // ── SpeechRecognition listens to the routed stream ────────────────
+      const recognition          = new SR();
+      recognition.continuous     = true;
+      recognition.interimResults = true;
+      recognition.lang           = 'en-US';
+
+      // Chrome's SR doesn't expose a stream constructor, but webkitSpeechRecognition
+      // on Chrome ≥ M110 supports audioTrack via the non-standard grammars trick.
+      // The cleanest cross-browser shim: temporarily replace getUserMedia so that
+      // when SR internally calls it, we return our routed stream instead.
+
+/*
+      const origGUM = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      navigator.mediaDevices.getUserMedia = async () => dest.stream;
+*/
+
+      let transcript = '', finished = false;
+
+      setStatus(`🎙 Transcribing "${entry.name}" via Web Audio (no speakers needed)…`);
+
+      function finish() {
+        if (finished) return;
+        finished = true;
+       // navigator.mediaDevices.getUserMedia = origGUM;  // restore
+        try { recognition.stop(); } catch(e) {}
+        try { source.stop(); actx.close(); } catch(e) {}
+        entry.transcript = transcript.trim() || null;
+        resolve();
+      }
+
+      recognition.onresult = e => {
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          if (e.results[i].isFinal) transcript += e.results[i][0].transcript + ' ';
+          else setStatus('🎙 Hearing: "' + e.results[i][0].transcript + '"');
+        }
+        if (transcript) setStatus('🎙 Transcribed so far: "' + transcript.slice(-120) + '"');
+      };
+
+      recognition.onerror = e => {
+        if (e.error === 'no-speech') return;
+        setStatus('⚠ SR error: ' + e.error + ' — trying fallback.');
+        finish();
+      };
+
+      // Chrome stops SR after ~60 s; restart while audio is still running
+      recognition.onend = () => {
+        if (!finished) {
+          try { recognition.start(); } catch(e) { finish(); }
+        }
+      };
+
+      // Start SR, then immediately start audio source playback
+      recognition.start();
+      await new Promise(r => setTimeout(r, 200));  // brief warm-up
+      source.start(0);
+
+      // Resolve ~800 ms after audio finishes to flush last partials
+      source.onended = () => setTimeout(finish, 800);
+
+    } catch(err) {
+      // ── Fallback: play through speakers, hope mic picks it up ─────────
+      setStatus('⚠ Web Audio routing failed (' + err.message.slice(0,60) +
+        ') — falling back: play file through speakers with mic listening.');
+      const playEl = document.createElement('audio');
+      playEl.src = entry.dataUrl; playEl.volume = 1.0;
+      document.body.appendChild(playEl);
+      const recognition2        = new SR();
+      recognition2.continuous   = true;
+      recognition2.interimResults = true;
+      recognition2.lang         = 'en-US';
+      let transcript2 = '', finished2 = false;
+      function finish2() {
+        if (finished2) return; finished2 = true;
+        try { recognition2.stop(); } catch(e) {}
+        try { playEl.pause(); playEl.src=''; document.body.removeChild(playEl); } catch(e) {}
+        entry.transcript = transcript2.trim() || null;
+        resolve();
+      }
+      recognition2.onresult = e => {
+        for (let i = e.resultIndex; i < e.results.length; i++)
+          if (e.results[i].isFinal) transcript2 += e.results[i][0].transcript + ' ';
+        setStatus('🎙 Fallback heard: "' + transcript2.slice(-100) + '"');
+      };
+      recognition2.onerror = e => { if(e.error!=='no-speech'){ setStatus('⚠ '+e.error); finish2(); }};
+      recognition2.onend   = () => { if(!finished2&&!playEl.ended) try{recognition2.start();}catch(e){finish2();} else setTimeout(finish2,800); };
+      playEl.onended = () => setTimeout(finish2, 900);
+      playEl.onerror = () => { setStatus('⚠ Cannot play audio file.'); finish2(); };
+      try { recognition2.start(); await new Promise(r=>setTimeout(r,350)); await playEl.play(); }
+      catch(e) { setStatus('⚠ Playback blocked — click page first, then drop file again.'); finish2(); }
+    }
+  });
+}
+// ── Wrapper: read file then attempt transcription if audio ──────────────────
+async function myReadAndTranscribeFile(file) {
+  const entry = await myReadFile(file);
+  if (entry.type === 'audio') {
+    setStatus(`🎙 Preparing to transcribe "${file.name}"…`);
+    await myTranscribeAudioFile(entry);
+    if (entry.transcript) {
+      setStatus(`✓ Transcribed "${file.name}" — ${entry.transcript.length} chars`);
+    } else {
+      setStatus(`"${file.name}" added without transcript — use 🎙 mic button to transcribe live`);
+    }
+  }
+  return entry;
+}
+
+// ── Resolution helper — reads the shared dropdown ──────────────────────────
+function myGetMaxPx() {
+  return parseInt(document.getElementById('img-resolution')?.value || '600', 10);
+}
+
+// ── Extract N evenly-spaced frames from a video File → array of image entries
+
+function myExtractVideoFrames(file, numFrames) {
+  return new Promise((resolve,reject)=>{
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.preload='metadata'; video.muted=true; video.playsInline=true;
+    video.src=url;
+
+    video.onloadedmetadata=()=>{
+      const duration=video.duration;
+      if(!isFinite(duration)||duration<=0){
+        URL.revokeObjectURL(url);
+        reject(new Error('Cannot read video duration.'));
+        return;
+      }
+
+      const actualFrames = Math.min(numFrames, Math.max(1, Math.floor(duration)));
+      const times=[];
+      for(let i=0;i<actualFrames;i++){
+        times.push(duration*(i+0.5)/actualFrames);
+      }
+
+      // Scale video frame to chosen resolution preserving aspect ratio
+      const maxPx = myGetMaxPx();
+      const srcW = video.videoWidth  || 640;
+      const srcH = video.videoHeight || 480;
+      const scale = Math.min(1, maxPx/srcW, maxPx/srcH);
+      const outW  = Math.round(srcW * scale);
+      const outH  = Math.round(srcH * scale);
+      console.log("Video source:", srcW + "x" + srcH);
+      console.log("Frame output:", outW + "x" + outH, "Frames:", actualFrames);
+      const canvas=document.createElement('canvas');
+      canvas.width=outW; canvas.height=outH;
+      const ctx=canvas.getContext('2d');
+      const frames=[];
+      let idx=0;
+
+      function seekNext(){
+        if(idx>=times.length){
+          URL.revokeObjectURL(url);
+          resolve(frames);
+          return;
+        }
+        video.currentTime=times[idx];
+      }
+
+      video.onseeked=()=>{
+        ctx.drawImage(video,0,0,outW,outH);
+        const dataUrl=canvas.toDataURL('image/jpeg',0.72);
+        frames.push({
+          type:'image',
+          name:`${file.name} — frame ${idx+1}/${times.length} @ ${times[idx].toFixed(1)}s (${outW}×${outH})`,
+          dataUrl, transcript:null
+        });
+        idx++;
+        seekNext();
+      };
+
+      video.onerror=e=>{ URL.revokeObjectURL(url); reject(new Error('Video error: '+e.message)); };
+      seekNext();
+    };
+
+    video.onerror=()=>{ URL.revokeObjectURL(url); reject(new Error('Cannot load video.')); };
+  });
+}
+
+function myRenderDropZone() {
+  dropZone.innerHTML='';
+  if(!myMediaQueue.length){
+    const hint=document.createElement('span');
+    hint.className='drop-hint';
+    hint.textContent='🖼️🔊🎬 Drop images or video files here — or click to browse, Plese no Audio';
+    dropZone.appendChild(hint);
+    return;
+  }
+  myMediaQueue.forEach((m,idx)=>{
+    const thumb=document.createElement('span');
+    thumb.className='media-thumb';
+    if(m.type==='image'){
+      const img=document.createElement('img');
+      img.src=m.dataUrl; img.alt=m.name;
+      thumb.appendChild(img);
+    } else {
+      const icon=document.createElement('span');
+      icon.style.fontSize='1.6em'; icon.textContent='🔊';
+      thumb.appendChild(icon);
+    }
+    const nameEl=document.createElement('span');
+    nameEl.className='thumb-name'; nameEl.textContent=m.name;
+    thumb.appendChild(nameEl);
+    if(m.transcript){
+      const badge=document.createElement('span');
+      badge.className='transcript-badge'; badge.title=m.transcript;
+      badge.textContent='✓ transcript';
+      thumb.appendChild(badge);
+    }
+    const rm=document.createElement('button');
+    rm.className='remove-btn'; rm.textContent='×'; rm.title='Remove';
+    rm.onclick=e=>{ e.stopPropagation(); myMediaQueue.splice(idx,1); myRenderDropZone(); };
+    thumb.appendChild(rm);
+    dropZone.appendChild(thumb);
+  });
+}
+
+async function myHandleFiles(fileList) {
+  const files = Array.from(fileList);
+  const videoFiles = files.filter(f=>f.type.startsWith('video/'));
+  const mediaFiles = files.filter(f=>f.type.startsWith('image/')||f.type.startsWith('audio/'));
+
+  // ── Handle video files → extract frames
+  for (const vf of videoFiles) {
+    vidExtractMsg.textContent=`Extracting frames from "${vf.name}"…`;
+    try {
+      const nFrames = Math.max(1, Math.min(50, parseInt(document.getElementById('vid-frame-count')?.value)||3));
+      const frames = await myExtractVideoFrames(vf, nFrames);
+      myMediaQueue.push(...frames);
+      vidExtractMsg.textContent=`✓ Extracted ${frames.length} frames from "${vf.name}"`;
+      setTimeout(()=>{ vidExtractMsg.textContent=''; },4000);
+    } catch(err) {
+      vidExtractMsg.textContent=`⚠ Frame extraction failed: ${err.message}`;
+    }
+  }
+
+  // ── Handle regular image/audio files (audio → auto-transcribe sequentially)
+  if (mediaFiles.length) {
+    for (const f of mediaFiles) {
+      const entry = await myReadAndTranscribeFile(f);
+      myMediaQueue.push(entry);
+      myRenderDropZone(); // update thumb immediately, badge shows ✓ transcript if got one
+    }
+    const audioCount = mediaFiles.filter(f=>f.type.startsWith('audio/')).length;
+    if (!audioCount) setStatus(mediaFiles.length+' file(s) added. Type a message and press Send.');
+  }
+
+  if (!videoFiles.length&&!mediaFiles.length) {
+    setStatus('⚠ Only image, audio, or video files are accepted.');
+    return;
+  }
+
+  myRenderDropZone();
+}
+
+dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.classList.add('dragover');});
+dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop',e=>{
+  e.preventDefault(); dropZone.classList.remove('dragover');
+  myHandleFiles(e.dataTransfer.files);
+});
+dropZone.addEventListener('click',()=>fileInputEl.click());
+window.myOnMediaFileSelect=input=>{
+  if(input.files.length) myHandleFiles(input.files);
+  input.value='';
+};
+
+// ══════════════════════════════════════════════════════════════════════════
+//  WEBCAM — open, flip (front/back), capture, auto-capture, stop
+// ══════════════════════════════════════════════════════════════════════════
+
+// Snapshot the current video frame → scale to chosen resolution → add to queue
+function myCaptureFrame(label) {
+  if (!myCamStream) return;
+  const maxPx = myGetMaxPx();
+  const srcW = camVideo.videoWidth  || 640;
+  const srcH = camVideo.videoHeight || 480;
+  // Scale down preserving aspect ratio so neither dimension exceeds the cap
+  const scale = Math.min(1, maxPx / srcW, maxPx / srcH);
+  camCanvas.width  = Math.round(srcW * scale);
+  camCanvas.height = Math.round(srcH * scale);
+  const ctx = camCanvas.getContext('2d');
+  ctx.drawImage(camVideo, 0, 0, camCanvas.width, camCanvas.height);
+  const dataUrl = camCanvas.toDataURL('image/jpeg', 0.72);  // lower quality = smaller payload
+  console.log("Webcam frame:", srcW + "x" + srcH, "→", camCanvas.width + "x" + camCanvas.height);
+  const ts = new Date().toLocaleTimeString();
+  myMediaQueue.push({
+    type:'image',
+    name: label || `📷 Webcam ${ts} (${camCanvas.width}×${camCanvas.height})`,
+    dataUrl, transcript:null
+  });
+  myRenderDropZone();
+}
+
+// Start (or restart) the webcam with the current facing mode
+async function myCamStart() {
+  // Stop any existing stream first
+  if (myCamStream) {
+    myCamStream.getTracks().forEach(t=>t.stop());
+    myCamStream=null;
+  }
+  try {
+    const constraints={
+      video:{
+        facingMode: myCamFacingMode,
+        width:{ideal:640}, height:{ideal:480}  // low res; capture further downscales to ≤600×400
+      },
+      audio:false
+    };
+    myCamStream = await navigator.mediaDevices.getUserMedia(constraints);
+    camVideo.srcObject=myCamStream;
+    camFacingLabel.textContent = myCamFacingMode==='environment'?'🔙 Rear camera':'🤳 Front camera';
+    camPanel.classList.add('active');
+    setStatus('Webcam active.');
+  } catch(err) {
+    setStatus('⚠ Camera error: '+err.message);
+  }
+}
+
+function myCamStopAll() {
+  clearInterval(myAutoCaptureTimer); myAutoCaptureTimer=null;
+  myAutoCaptureCount=0;
+  autoCaptureBtn.textContent='▶ Start Auto-capture';
+  autoCaptureBtn.classList.remove('active-cam');
+  autoCaptureStatus.textContent=''; autoCaptureStatus.className='';
+  if(myCamStream){ myCamStream.getTracks().forEach(t=>t.stop()); myCamStream=null; }
+  camVideo.srcObject=null;
+  camPanel.classList.remove('active');
+}
+
+window.myToggleCam = async ()=>{
+  if(myCamStream){ myCamStopAll(); setStatus('Webcam stopped.'); }
+  else { await myCamStart(); }
+};
+window.myCamStop   = ()=>{ myCamStopAll(); setStatus('Webcam stopped.'); };
+window.myCamCapture= ()=>{ myCaptureFrame(); };
+window.myCamFlip   = async ()=>{
+  // Cancel auto-capture, flip, restart
+  const wasAuto = !!myAutoCaptureTimer;
+  const autoSecs = parseInt(document.getElementById('auto-capture-secs').value)||5;
+  if(wasAuto) clearInterval(myAutoCaptureTimer);
+  myCamFacingMode = myCamFacingMode==='environment'?'user':'environment';
+  await myCamStart();
+  if(wasAuto) {
+    myAutoCaptureTimer=setInterval(()=>{
+      myAutoCaptureCount++;
+      myCaptureFrame(`📷 Auto #${myAutoCaptureCount} (${myCamFacingMode==='environment'?'rear':'front'})`);
+      autoCaptureStatus.textContent=`▶ ${myAutoCaptureCount} frame(s) captured`;
+    }, autoSecs*1000);
+  }
+};
+
+window.myToggleAutoCapture = ()=>{
+  if(myAutoCaptureTimer){
+    // Stop
+    clearInterval(myAutoCaptureTimer); myAutoCaptureTimer=null;
+    autoCaptureBtn.textContent='▶ Start Auto-capture';
+    autoCaptureBtn.classList.remove('active-cam');
+    autoCaptureStatus.textContent=`Stopped after ${myAutoCaptureCount} frame(s).`;
+    autoCaptureStatus.className='';
+    myAutoCaptureCount=0;
+  } else {
+    // Start — make sure camera is on
+    if(!myCamStream){ setStatus('⚠ Start the camera first (📷 Camera button).'); return; }
+    const secs=Math.max(1,parseInt(document.getElementById('auto-capture-secs').value)||5);
+    autoCaptureBtn.textContent='⏹ Stop Auto-capture';
+    autoCaptureBtn.classList.add('active-cam');
+    myAutoCaptureCount=0;
+    autoCaptureStatus.textContent='Starting…'; autoCaptureStatus.className='running';
+    myAutoCaptureTimer=setInterval(()=>{
+      myAutoCaptureCount++;
+      const face=myCamFacingMode==='environment'?'rear':'front';
+      myCaptureFrame(`📷 Auto #${myAutoCaptureCount} ${face} ${new Date().toLocaleTimeString()}`);
+      autoCaptureStatus.textContent=`▶ ${myAutoCaptureCount} frame(s) captured (every ${secs}s)`;
+    }, secs*1000);
+  }
+};
+
+// ── Mic transcription ──────────────────────────────────────────────────────
+window.myToggleMic = function(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){ micStatus.textContent='⚠ Web Speech API not supported (use Chrome/Edge).'; return; }
+  if(myMicActive){ myRecognition.stop(); return; }
+  myRecognition=new SR();
+  myRecognition.continuous=true; myRecognition.interimResults=true; myRecognition.lang='en-US';
+  myMicFinalText=inputEl.value;
+  myRecognition.onstart=()=>{
+    myMicActive=true;
+    micBtn.textContent='⏹ Stop mic transcription'; micBtn.style.background='#ffe0e0';
+    micStatus.textContent='🔴 Listening…';
+  };
+  myRecognition.onresult=e=>{
+    let interim='',final=myMicFinalText;
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const t=e.results[i][0].transcript;
+      if(e.results[i].isFinal) final+=(final?' ':'')+t;
+      else interim+=t;
+    }
+    myMicFinalText=final;
+    inputEl.value=final+(interim?' '+interim:'');
+    micLive.textContent=interim?'… '+interim:'';
+    myUpdateInputCount();
+  };
+  myRecognition.onend=()=>{
+    myMicActive=false;
+    micBtn.textContent='🎙️ Start mic transcription'; micBtn.style.background='#fff';
+    micStatus.textContent='Mic stopped.'; micLive.textContent='';
+    inputEl.value=myMicFinalText; myUpdateInputCount();
+  };
+  myRecognition.onerror=e=>{ micStatus.textContent='⚠ Mic error: '+e.error; };
+  myRecognition.start();
+};
+
+// ── Expose globals ─────────────────────────────────────────────────────────
+window.mySend = mySend;
+window.myLoad = myLoadModel;
+
+// ══════════════════════════════════════════════════════════════════════════
+//  MEMORY SYSTEM (unchanged from v33/v34)
+// ══════════════════════════════════════════════════════════════════════════
+let myMemoryEnabled=true;
+window.myOnMemoryToggle=()=>{
+  myMemoryEnabled=document.getElementById('myMemoryEnabled').checked;
+  const el=document.getElementById('myMemoryStatus');
+  el.textContent=myMemoryEnabled?'ON':'OFF';
+  el.style.color=myMemoryEnabled?'#2a7a2a':'#d94a4a';
+};
+
+const CONV_INDEX_KEY='myConvIndex';
+let myActiveConvId=null;
+let myMemoryStore=[];
+
+const myMakeId     =()=>'conv_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+const myGetConvIdx =()=>{ try{return JSON.parse(localStorage.getItem(CONV_INDEX_KEY))||[];}catch{return[];} };
+const mySetConvIdx =idx=>localStorage.setItem(CONV_INDEX_KEY,JSON.stringify(idx));
+const myGetConvData=id =>{ try{return JSON.parse(localStorage.getItem('myConv_'+id))||[];}catch{return[];} };
+const mySetConvData=(id,d)=>localStorage.setItem('myConv_'+id,JSON.stringify(d));
+const myDelConvData=id =>localStorage.removeItem('myConv_'+id);
+
+function myRebuildSelect(){
+  const sel=document.getElementById('myConvSelect'); sel.innerHTML='';
+  myGetConvIdx().forEach(c=>{
+    const o=document.createElement('option');
+    o.value=c.id; o.textContent=c.title;
+    if(c.id===myActiveConvId) o.selected=true;
+    sel.appendChild(o);
+  });
+}
+function myActivateConv(id){ myActiveConvId=id; myMemoryStore=myGetConvData(id); myRefreshTextarea(); myRebuildSelect(); }
+function myInitMemory(){
+  let idx=myGetConvIdx();
+  if(!idx.length){ const id=myMakeId(); idx=[{id,title:'General'}]; mySetConvIdx(idx); }
+  myActivateConv(idx[0].id);
+}
+window.myOnConvChange=()=>myActivateConv(document.getElementById('myConvSelect').value);
+window.myNewConversation=()=>{
+  const title=prompt('New conversation title:','New Chat'); if(!title)return;
+  const id=myMakeId(); const idx=myGetConvIdx(); idx.push({id,title});
+  mySetConvIdx(idx); mySetConvData(id,[]); myActivateConv(id);
+};
+window.myRenameConversation=()=>{
+  const idx=myGetConvIdx(); const entry=idx.find(c=>c.id===myActiveConvId); if(!entry)return;
+  const t=prompt('Rename:',entry.title); if(!t)return;
+  entry.title=t; mySetConvIdx(idx); myRebuildSelect();
+};
+window.myDeleteConversation=()=>{
+  const idx=myGetConvIdx();
+  if(idx.length<=1){alert('Cannot delete the last conversation.');return;}
+  const entry=idx.find(c=>c.id===myActiveConvId);
+  if(!confirm(`Delete "${entry?.title}"? Cannot be undone.`))return;
+  const newIdx=idx.filter(c=>c.id!==myActiveConvId);
+  myDelConvData(myActiveConvId); mySetConvIdx(newIdx); myActivateConv(newIdx[0].id);
+};
+function myRefreshTextarea(){
+  document.getElementById('myMemoryText').value=
+    myMemoryStore.length?JSON.stringify(myMemoryStore,null,2):'';
+}
+function mySaveMemory(){mySetConvData(myActiveConvId,myMemoryStore);myRefreshTextarea();}
+function myLoadMemory(){myMemoryStore=myGetConvData(myActiveConvId);myRefreshTextarea();}
+function myDownloadMemory(){
+  const idx=myGetConvIdx();
+  const name=(idx.find(c=>c.id===myActiveConvId)?.title||'memory').replace(/\s+/g,'_')+'.json';
+  const blob=new Blob([JSON.stringify(myMemoryStore,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob); const a=document.createElement('a');
+  a.href=url; a.download=name; a.click(); URL.revokeObjectURL(url);
+}
+function myUploadMemory(input){
+  const file=input.files[0]; if(!file)return;
+  const r=new FileReader();
+  r.onload=e=>{ try{myMemoryStore=JSON.parse(e.target.result);mySaveMemory();}catch{alert('Invalid JSON');} };
+  r.readAsText(file); input.value='';
+}
+function myClearMemory(){
+  if(!confirm('Clear all memory for this conversation?'))return;
+  myMemoryStore=[]; mySetConvData(myActiveConvId,[]);
+  document.getElementById('myMemoryText').value='';
+}
+function myStoreMemory(text,role){
+  if(!myMemoryEnabled)return;
+  if(role==='user'&&!document.getElementById('myStorePrompt').checked)return;
+  if(role==='assistant'&&!document.getElementById('myStoreReply').checked)return;
+  myMemoryStore.push({myRole:role,myText:text,myTime:Date.now()});
+  mySaveMemory();
+}
+function mySearchMemory(query){
+  const words=query.toLowerCase().split(/\s+/);
+  return myMemoryStore
+    .map(m=>{let s=0;words.forEach(w=>{if(m.myText.toLowerCase().includes(w))s++;});return{...m,s};})
+    .filter(m=>m.s>0).sort((a,b)=>b.s-a.s).slice(0,5).map(m=>m.myText);
+}
+window.myLoadMemory=myLoadMemory; window.myDownloadMemory=myDownloadMemory;
+window.myUploadMemory=myUploadMemory; window.myClearMemory=myClearMemory;
+
+myInitMemory();
+
+</script>
+</body>
+</html>
